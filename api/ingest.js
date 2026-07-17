@@ -27,9 +27,16 @@ export default async function handler(req, res) {
   // Verzamel bronnen die geconfigureerd zijn.
   let items = [];
   const fouten = [];
+  const sweep = req.query?.mode === 'sweep';
   try {
-    if (process.env.GMAIL_LABEL && process.env.GOOGLE_REFRESH_TOKEN) {
-      items = items.concat(await gmailFacturen({ label: process.env.GMAIL_LABEL }));
+    if (process.env.GOOGLE_REFRESH_TOKEN) {
+      if (sweep) {
+        const q = process.env.GMAIL_SWEEP_QUERY
+          || 'has:attachment filename:pdf newer_than:365d (factuur OR invoice OR rekening OR receipt OR bon)';
+        items = items.concat(await gmailFacturen({ query: q, maxMails: 40 }));
+      } else if (process.env.GMAIL_LABEL) {
+        items = items.concat(await gmailFacturen({ label: process.env.GMAIL_LABEL }));
+      }
     }
   } catch (e) { fouten.push(`gmail: ${e.message}`); }
   try {
