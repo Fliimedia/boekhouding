@@ -25,13 +25,30 @@ export default async function handler(req, res) {
   const { data, error } = await q;
   if (error) return res.status(500).json({ ok: false, reden: error.message });
 
-  // Gekoppeld-vlag op basis van bestaande koppelingen.
+  // Voorgestelde of gekoppelde factuur per transactie.
   const ids = data.map((r) => r.id);
-  let gekoppeld = new Set();
+  const koppMap = {};
   if (ids.length) {
-    const { data: kopp } = await supabase.from('koppelingen').select('transactie_id').in('transactie_id', ids);
-    gekoppeld = new Set((kopp || []).map((k) => k.transactie_id));
+    const { data: kopp } = await supabase
+      .from('koppelingen').select('transactie_id, factuur_id, confidence, bevestigd').in('transactie_id', ids);
+    const facIds = [...new Set((kopp || []).map((k) => k.factuur_id))];
+    const facById = {};
+    if (facIds.length) {
+      const { data: facs } = await supabase
+        .from('facturen').select('id, tegenpartij, totaal, bestandsnaam, bronbestand_url').in('id', facIds);
+      for (const f of facs || []) {
+        let link = null;
+        if (f.bronbestand_url) {
+          const { data: sign } = await supabase.storage.from('facturen').createSignedUrl(f.bronbestand_url, 3600);
+          link = sign?.signedUrl || null;
+        }
+        facById[f.id] = { id: f.id, tegenpartij: f.tegenpartij, totaal: f.totaal, bestandsnaam: f.bestandsnaam, link };
+      }
+    }
+    for (const k of kopp || []) {
+      koppMap[k.transactie_id] = { confidence: k.confidence, bevestigd: k.bevestigd, factuur: facById[k.factuur_id] || null };
+    }
   }
-  const transacties = data.map((r) => ({ ...r, gekoppeld: gekoppeld.has(r.id) }));
+  const transacties = data.map((r) => ({ ...r, gekoppeld: !!koppMap[r.id], koppeling: koppMap[r.id] || null }));
   return res.status(200).json({ ok: true, transacties });
 }
