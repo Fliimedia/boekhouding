@@ -526,6 +526,7 @@ function App() {
   const [entiteit, setEntiteit] = useState('geconsolideerd');
   const [nonce, setNonce] = useState(0);
   const [syncBezig, setSyncBezig] = useState(false);
+  const [syncMsg, setSyncMsg] = useState(null);
   const [anchor, setAnchor] = useState(null);
   const rows = useTransacties(entiteit, nonce);
 
@@ -538,17 +539,29 @@ function App() {
     setAnchor(null);
   }, [tab, anchor, rows]);
 
-  const sync = () => {
-    setSyncBezig(true);
+  const sync = async () => {
+    setSyncBezig(true); setSyncMsg(null);
     const q = entiteit === 'geconsolideerd' ? '' : `?type=${entiteit}`;
-    Promise.allSettled([
-      fetch(`/api/bunq-sync${q}`, { method: 'POST' }),
-      fetch('/api/ingest', { method: 'POST' }),
-    ])
-      .then(() => fetch('/api/parse', { method: 'POST' }))
-      .then(() => fetch('/api/match', { method: 'POST' }))
-      .catch(() => null)
-      .finally(() => { setSyncBezig(false); setNonce((n) => n + 1); });
+    try {
+      const r = await fetch(`/api/bunq-sync${q}`, { method: 'POST' });
+      let j = null;
+      try { j = await r.json(); } catch { /* geen json */ }
+      if (j && j.ok) {
+        const nieuw = (j.resultaten || []).reduce((a, x) => a + (x.verwerkt || 0), 0);
+        const rek = (j.resultaten || []).reduce((a, x) => a + (x.rekeningen || 0), 0);
+        setSyncMsg({ ok: true, text: `Bank: ${nieuw} nieuw, ${rek} rekeningen` });
+      } else {
+        const reden = (j?.resultaten || []).filter((x) => !x.ok).map((x) => `${x.entiteit}: ${x.reden}`).join('  |  ')
+          || j?.reden || `status ${r.status}`;
+        setSyncMsg({ ok: false, text: reden });
+      }
+    } catch (e) {
+      setSyncMsg({ ok: false, text: String(e.message || e) });
+    }
+    await Promise.allSettled([fetch('/api/ingest', { method: 'POST' })]);
+    await fetch('/api/parse', { method: 'POST' }).catch(() => {});
+    await fetch('/api/match', { method: 'POST' }).catch(() => {});
+    setSyncBezig(false); setNonce((n) => n + 1);
   };
 
   const entKeuze = [
@@ -589,6 +602,7 @@ function App() {
             <RefreshCw size={15} />{syncBezig ? t.syncBezig : t.sync}
           </button>
         </div>
+        {syncMsg && <div className={`syncmsg${syncMsg.ok ? '' : ' err'}`}>{syncMsg.text}</div>}
 
         {tab === 'overzicht' && <Overzicht rows={rows} />}
         {tab === 'facturen' && <Facturen entiteit={entiteit} nonce={nonce} />}
