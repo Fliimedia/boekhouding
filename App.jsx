@@ -553,15 +553,16 @@ function App() {
     const q = entiteit === 'geconsolideerd' ? '' : `?type=${entiteit}`;
     try {
       const r = await fetch(`/api/bunq-sync${q}`, { method: 'POST' });
+      const raw = await r.text();
       let j = null;
-      try { j = await r.json(); } catch { /* geen json */ }
+      try { j = JSON.parse(raw); } catch { /* geen json */ }
       if (j && j.ok) {
         const nieuw = (j.resultaten || []).reduce((a, x) => a + (x.verwerkt || 0), 0);
         const rek = (j.resultaten || []).reduce((a, x) => a + (x.rekeningen || 0), 0);
         setSyncMsg({ ok: true, text: `Bank: ${nieuw} nieuw, ${rek} rekeningen` });
       } else {
         const reden = (j?.resultaten || []).filter((x) => !x.ok).map((x) => `${x.entiteit}: ${x.reden}`).join('  |  ')
-          || j?.reden || `status ${r.status}`;
+          || j?.reden || (raw ? raw.slice(0, 300) : `status ${r.status}`);
         setSyncMsg({ ok: false, text: reden });
       }
     } catch (e) {
