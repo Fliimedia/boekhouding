@@ -9,13 +9,13 @@
 // Aanroep: POST /api/ingest
 
 import { createClient } from '@supabase/supabase-js';
-import { gmailFacturen, driveFacturen } from '../lib/google.js';
+import { gmailFacturen, driveFacturen, gmailSweepPagina } from '../lib/google.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, reden: 'Gebruik POST' });
 
   const url = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+  const serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
   if (!url || !serviceKey) return res.status(500).json({ ok: false, reden: 'Supabase env vars ontbreken' });
   const supabase = createClient(url, serviceKey);
 
@@ -28,17 +28,31 @@ export default async function handler(req, res) {
   let items = [];
   const fouten = [];
   const sweep = req.query?.mode === 'sweep';
+  let pageToken = null;
+  let sweepNext = null;
+  if (sweep) {
+    const { data: st } = await supabase.from('app_state').select('waarde').eq('sleutel', 'gmail_sweep_page').maybeSingle();
+    pageToken = st?.waarde || null;
+  }
   try {
     if (process.env.GOOGLE_REFRESH_TOKEN) {
       if (sweep) {
         const q = process.env.GMAIL_SWEEP_QUERY
-          || 'has:attachment filename:pdf newer_than:365d (factuur OR invoice OR rekening OR receipt OR bon)';
-        items = items.concat(await gmailFacturen({ query: q, maxMails: 40 }));
+          || 'has:attachment filename:pdf newer_than:1095d (factuur OR invoice OR rekening OR receipt OR bon)';
+        const { items: g, nextPageToken } = await gmailSweepPagina({ query: q, pageToken, maxMails: 30 });
+        for (const x of g) items.push(x);
+        sweepNext = nextPageToken;
       } else if (process.env.GMAIL_LABEL) {
         items = items.concat(await gmailFacturen({ label: process.env.GMAIL_LABEL }));
       }
     }
   } catch (e) { fouten.push(`gmail: ${e.message}`); }
+  try {
+    // Drive bij gewone sync altijd, bij sweep alleen op de eerste pagina.
+    if (process.env.DRIVE_FOLDER_ID && process.env.GOOGLE_REFRESH_TOKEN && (!sweep || !pageToken)) {
+      items = items.concat(await driveFacturen({ folderId: process.env.DRIVE_FOLDER_ID }));
+    }
+  } catch (e) { fouten.push(`drive: ${e.message}`); }
   try {
     if (process.env.DRIVE_FOLDER_ID && process.env.GOOGLE_REFRESH_TOKEN) {
       items = items.concat(await driveFacturen({ folderId: process.env.DRIVE_FOLDER_ID }));
@@ -78,5 +92,17 @@ export default async function handler(req, res) {
     nieuw += 1;
   }
 
-  return res.status(200).json({ ok: fouten.length === 0, gevonden: items.length, nieuw, overgeslagen, fouten });
+  // Sweep-cursor bijwerken zodat de volgende run verder gaat.
+  let meer = false;
+  if (sweep) {
+    if (sweepNext) {
+      const { error: curErr } = await supabase.from('app_state')
+        .upsert({ sleutel: 'gmail_sweep_page', waarde: sweepNext, updated_at: new Date().toISOString() });
+      if (curErr) fouten.push(`cursor: ${curErr.message}`); else meer = true;
+    } else {
+      await supabase.from('app_state').delete().eq('sleutel', 'gmail_sweep_page');
+    }
+  }
+
+  return res.status(200).json({ ok: fouten.length === 0, gevonden: items.length, nieuw, overgeslagen, meer, fouten });
 }
