@@ -606,10 +606,14 @@ function App() {
               <button key={e.id} className={entiteit === e.id ? 'on' : ''} onClick={() => setEntiteit(e.id)}>{e.naam}</button>
             ))}
           </div>
-          <StatusDot />
-          <button className="sync" onClick={sync} disabled={syncBezig}>
-            <RefreshCw size={15} />{syncBezig ? t.syncBezig : t.sync}
-          </button>
+          <div className="pagetitle">{t.tabs[tab]}</div>
+          <div className="syncwrap">
+            <button className="sync" onClick={sync} disabled={syncBezig}>
+              <RefreshCw size={15} className={syncBezig ? 'spin' : ''} />
+              {syncBezig ? t.tabs.transacties : t.sync}
+            </button>
+            <StatusDot />
+          </div>
         </div>
         {syncMsg && <div className={`syncmsg${syncMsg.ok ? '' : ' err'}`}>{syncMsg.text}</div>}
 
