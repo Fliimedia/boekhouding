@@ -17,6 +17,13 @@ const teksten = {
     verbindingBezig: 'Verbinding controleren...',
     verbindingOk: 'Database verbonden',
     verbindingFout: 'Geen verbinding',
+    sync: 'Bank synchroniseren',
+    syncBezig: 'Bezig met synchroniseren...',
+    transactieLeeg: 'Nog geen transacties. Klik op Bank synchroniseren.',
+    kolomDatum: 'Datum',
+    kolomTegenpartij: 'Tegenpartij',
+    kolomOmschrijving: 'Omschrijving',
+    kolomBedrag: 'Bedrag',
   },
   en: {
     titel: 'Bookkeeping overview',
@@ -32,8 +39,22 @@ const teksten = {
     verbindingBezig: 'Checking connection...',
     verbindingOk: 'Database connected',
     verbindingFout: 'No connection',
+    sync: 'Sync bank',
+    syncBezig: 'Syncing...',
+    transactieLeeg: 'No transactions yet. Click Sync bank.',
+    kolomDatum: 'Date',
+    kolomTegenpartij: 'Counterparty',
+    kolomOmschrijving: 'Description',
+    kolomBedrag: 'Amount',
   },
 };
+
+function formatBedrag(n) {
+  return new Intl.NumberFormat(taal === 'en' ? 'en-US' : 'nl-NL', {
+    style: 'currency',
+    currency: 'EUR',
+  }).format(Number(n || 0));
+}
 
 const taal = (navigator.language || 'nl').toLowerCase().startsWith('en') ? 'en' : 'nl';
 const t = teksten[taal];
@@ -64,9 +85,66 @@ function StatusBalk() {
   );
 }
 
+function Transacties({ entiteit }) {
+  const [rijen, setRijen] = useState([]);
+  const [bezig, setBezig] = useState(true);
+
+  const laden = () => {
+    setBezig(true);
+    fetch(`/api/transacties?type=${entiteit}`)
+      .then((r) => r.json())
+      .then((d) => setRijen(d.transacties || []))
+      .catch(() => setRijen([]))
+      .finally(() => setBezig(false));
+  };
+
+  useEffect(() => { laden(); }, [entiteit]);
+
+  if (bezig) return <div style={{ color: '#999', padding: 24 }}>...</div>;
+  if (rijen.length === 0) {
+    return <div style={{ color: '#999', padding: 24, textAlign: 'center' }}>{t.transactieLeeg}</div>;
+  }
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <thead>
+        <tr style={{ textAlign: 'left', color: '#888', borderBottom: '1px solid #eee' }}>
+          <th style={{ padding: '8px 6px' }}>{t.kolomDatum}</th>
+          <th style={{ padding: '8px 6px' }}>{t.kolomTegenpartij}</th>
+          <th style={{ padding: '8px 6px' }}>{t.kolomOmschrijving}</th>
+          <th style={{ padding: '8px 6px', textAlign: 'right' }}>{t.kolomBedrag}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rijen.map((r) => (
+          <tr key={r.id} style={{ borderBottom: '1px solid #f4f4f4' }}>
+            <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>{r.datum}</td>
+            <td style={{ padding: '8px 6px' }}>{r.tegenpartij || ''}</td>
+            <td style={{ padding: '8px 6px', color: '#666' }}>{r.omschrijving || ''}</td>
+            <td style={{ padding: '8px 6px', textAlign: 'right', color: Number(r.bedrag) < 0 ? '#c0392b' : '#1f9d55', whiteSpace: 'nowrap' }}>
+              {formatBedrag(r.bedrag)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function App() {
   const [entiteit, setEntiteit] = useState('geconsolideerd');
   const [tab, setTab] = useState('overzicht');
+  const [syncBezig, setSyncBezig] = useState(false);
+  const [syncNonce, setSyncNonce] = useState(0);
+
+  const synchroniseer = () => {
+    setSyncBezig(true);
+    const q = entiteit === 'geconsolideerd' ? '' : `?type=${entiteit}`;
+    fetch(`/api/bunq-sync${q}`, { method: 'POST' })
+      .then((r) => r.json())
+      .catch(() => null)
+      .finally(() => { setSyncBezig(false); setSyncNonce((n) => n + 1); });
+  };
 
   const entiteiten = [
     { id: 'geconsolideerd', naam: t.geconsolideerd },
@@ -83,7 +161,7 @@ function App() {
         <StatusBalk />
       </header>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
         {entiteiten.map((e) => (
           <button
             key={e.id}
@@ -101,6 +179,22 @@ function App() {
             {e.naam}
           </button>
         ))}
+        <button
+          onClick={synchroniseer}
+          disabled={syncBezig}
+          style={{
+            marginLeft: 'auto',
+            padding: '6px 12px',
+            borderRadius: 6,
+            border: '1px solid #1a1a1a',
+            background: '#fff',
+            color: '#1a1a1a',
+            cursor: syncBezig ? 'wait' : 'pointer',
+            fontSize: 13,
+          }}
+        >
+          {syncBezig ? t.syncBezig : t.sync}
+        </button>
       </div>
 
       <nav style={{ display: 'flex', gap: 4, borderBottom: '1px solid #eee', marginBottom: 20 }}>
@@ -123,8 +217,14 @@ function App() {
         ))}
       </nav>
 
-      <section style={{ minHeight: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: 14 }}>
-        {t.leeg}
+      <section style={{ minHeight: 240 }}>
+        {tab === 'transacties' ? (
+          <Transacties key={`${entiteit}-${syncNonce}`} entiteit={entiteit} />
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 240, color: '#999', fontSize: 14 }}>
+            {t.leeg}
+          </div>
+        )}
       </section>
     </div>
   );
