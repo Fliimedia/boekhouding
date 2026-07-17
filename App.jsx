@@ -313,16 +313,25 @@ function Overzicht({ rows }) {
 function Facturen({ entiteit, nonce }) {
   const [lokaal, setLokaal] = useState(0);
   const [sweepBezig, setSweepBezig] = useState(false);
+  const [sweepN, setSweepN] = useState(0);
   const rows = useFacturen(entiteit, `${nonce}-${lokaal}`);
   const open = rows.filter((f) => f.status === 'open').length;
   const inkoop = rows.filter((f) => f.richting === 'inkoop').length;
   const verkoop = rows.filter((f) => f.richting === 'verkoop').length;
 
-  const sweep = () => {
-    setSweepBezig(true);
-    fetch('/api/ingest?mode=sweep', { method: 'POST' })
-      .catch(() => null)
-      .finally(() => { setSweepBezig(false); setLokaal((n) => n + 1); });
+  const sweep = async () => {
+    setSweepBezig(true); setSweepN(0);
+    let meer = true, veilig = 0, totaal = 0;
+    while (meer && veilig < 80) {
+      const r = await postJson('/api/ingest?mode=sweep', {});
+      if (!r || !r.ok) { meer = false; break; }
+      totaal += r.nieuw || 0;
+      setSweepN(totaal);
+      meer = !!r.meer;
+      veilig += 1;
+      setLokaal((n) => n + 1);
+    }
+    setSweepBezig(false); setLokaal((n) => n + 1);
   };
 
   return (
@@ -338,7 +347,7 @@ function Facturen({ entiteit, nonce }) {
         <Fold id="fa-tabel" titel={t.factuurTabel} openDefault><FacturenTabel rows={rows} /></Fold>
       </div>
       <button className="ghost" onClick={sweep} disabled={sweepBezig}>
-        {sweepBezig ? t.sweepBezig : t.sweepKnop}
+        {sweepBezig ? `${t.sweepBezig} ${sweepN}` : t.sweepKnop}
       </button>
     </>
   );
