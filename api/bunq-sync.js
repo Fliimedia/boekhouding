@@ -114,10 +114,11 @@ export default async function handler(req, res) {
 
         const context = await ensureContext({ apiKey: login.key, ctx: ctxRow || {}, save });
         const accounts = await listMonetaryAccounts(context);
+        const jaarStart = `${new Date().getFullYear()}-01-01`;
         let nieuw = 0;
         for (const acc of accounts) {
           const entityId = login.vast || ibanMap[normIban(acc.iban)] || defaultEntity;
-          const betalingen = await listPayments(context, acc.id);
+          const betalingen = await listPayments(context, acc.id, { sinds: jaarStart });
           if (betalingen.length === 0) continue;
           const rijen = betalingen.map((b) => ({ ...b, entity_id: entityId, rekening_iban: acc.iban, bron: 'bunq' }));
           const { error: upErr, count } = await supabase
