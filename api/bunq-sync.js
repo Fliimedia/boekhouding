@@ -71,7 +71,9 @@ export default async function handler(req, res) {
     const defaultEntity = werkId || entiteiten[0].id;
 
     const normIban = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
+    const { data: ibanRows } = await supabase.from('entiteiten').select('id, iban');
     const ibanMap = {};
+    for (const e of ibanRows || []) { if (e && e.iban) ibanMap[normIban(e.iban)] = e.id; }
     if (process.env.BUNQ_IBAN_HOLDING && holdingId) ibanMap[normIban(process.env.BUNQ_IBAN_HOLDING)] = holdingId;
     if (process.env.BUNQ_IBAN_WERKMAATSCHAPPIJ && werkId) ibanMap[normIban(process.env.BUNQ_IBAN_WERKMAATSCHAPPIJ)] = werkId;
 
@@ -117,10 +119,10 @@ export default async function handler(req, res) {
           const entityId = login.vast || ibanMap[normIban(acc.iban)] || defaultEntity;
           const betalingen = await listPayments(context, acc.id);
           if (betalingen.length === 0) continue;
-          const rijen = betalingen.map((b) => ({ ...b, entity_id: entityId, bron: 'bunq' }));
+          const rijen = betalingen.map((b) => ({ ...b, entity_id: entityId, rekening_iban: acc.iban, bron: 'bunq' }));
           const { error: upErr, count } = await supabase
             .from('transacties')
-            .upsert(rijen, { onConflict: 'bron,extern_id', ignoreDuplicates: true, count: 'exact' });
+            .upsert(rijen, { onConflict: 'bron,extern_id', count: 'exact' });
           if (upErr) throw new Error(upErr.message);
           nieuw += count ?? rijen.length;
         }
