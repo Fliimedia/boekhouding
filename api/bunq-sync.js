@@ -35,6 +35,13 @@ export default async function handler(req, res) {
     .in('type', filterType ? [filterType] : ['holding', 'werkmaatschappij']);
   if (entError) return res.status(500).json({ ok: false, reden: entError.message });
 
+  // Reset: wis de opgeslagen handshake zodat een wildcard-key opnieuw registreert.
+  if (req.query?.reset === '1') {
+    for (const ent of entiteiten) {
+      await supabase.from('bunq_context').delete().eq('entity_id', ent.id);
+    }
+  }
+
   const resultaten = [];
 
   for (const ent of entiteiten) {
