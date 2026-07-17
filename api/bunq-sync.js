@@ -13,11 +13,6 @@ import { ensureContext, listMonetaryAccounts, listPayments } from '../lib/bunq.j
 
 export const maxDuration = 60;
 
-const KEY_PER_TYPE = {
-  holding: 'BUNQ_API_KEY_HOLDING',
-  werkmaatschappij: 'BUNQ_API_KEY_WERKMAATSCHAPPIJ',
-};
-
 function netteFout(msg) {
   const s = String(msg || '');
   if (s.includes('<!DOCTYPE') || s.includes('<html')) {
@@ -71,27 +66,38 @@ export default async function handler(req, res) {
       }
     }
 
+    const holdingId = (entiteiten.find((e) => e.type === 'holding') || {}).id || null;
+    const werkId = (entiteiten.find((e) => e.type === 'werkmaatschappij') || {}).id || null;
+    const defaultEntity = werkId || entiteiten[0].id;
+
+    const normIban = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
+    const ibanMap = {};
+    if (process.env.BUNQ_IBAN_HOLDING && holdingId) ibanMap[normIban(process.env.BUNQ_IBAN_HOLDING)] = holdingId;
+    if (process.env.BUNQ_IBAN_WERKMAATSCHAPPIJ && werkId) ibanMap[normIban(process.env.BUNQ_IBAN_WERKMAATSCHAPPIJ)] = werkId;
+
+    // Logins bepalen: per entiteit een eigen sleutel, of een gedeelde sleutel.
+    const logins = [];
+    const perH = process.env.BUNQ_API_KEY_HOLDING;
+    const perW = process.env.BUNQ_API_KEY_WERKMAATSCHAPPIJ;
+    if (perH || perW) {
+      if (perH && holdingId) logins.push({ naam: 'Holding', key: perH, ctxEntity: holdingId, vast: holdingId });
+      if (perW && werkId) logins.push({ naam: 'Werkmaatschappij', key: perW, ctxEntity: werkId, vast: werkId });
+    } else if (process.env.BUNQ_API_KEY) {
+      logins.push({ naam: 'Bunq', key: process.env.BUNQ_API_KEY, ctxEntity: entiteiten[0].id, vast: null });
+    }
+    if (logins.length === 0) {
+      return res.status(200).json({ ok: false, reden: 'Geen Bunq sleutel. Zet BUNQ_API_KEY in Vercel (of per entiteit BUNQ_API_KEY_HOLDING en BUNQ_API_KEY_WERKMAATSCHAPPIJ).' });
+    }
+
     const resultaten = [];
-
-    for (const ent of entiteiten) {
-      const envNaam = KEY_PER_TYPE[ent.type];
-      const apiKey = process.env[envNaam];
-      if (!apiKey) {
-        resultaten.push({ entiteit: ent.naam, ok: false, reden: `${envNaam} ontbreekt` });
-        continue;
-      }
-
+    for (const login of logins) {
       try {
-        // Context laden uit db (of leeg).
         const { data: ctxRow } = await supabase
-          .from('bunq_context')
-          .select('*')
-          .eq('entity_id', ent.id)
-          .maybeSingle();
+          .from('bunq_context').select('*').eq('entity_id', login.ctxEntity).maybeSingle();
 
         const save = async (context) => {
           await supabase.from('bunq_context').upsert({
-            entity_id: ent.id,
+            entity_id: login.ctxEntity,
             private_key_pem: context.private_key_pem,
             public_key_pem: context.public_key_pem,
             installation_token: context.installation_token,
@@ -104,26 +110,23 @@ export default async function handler(req, res) {
           });
         };
 
-        const context = await ensureContext({ apiKey, ctx: ctxRow || {}, save });
-
-        // Rekeningen en betalingen ophalen.
+        const context = await ensureContext({ apiKey: login.key, ctx: ctxRow || {}, save });
         const accounts = await listMonetaryAccounts(context);
         let nieuw = 0;
         for (const acc of accounts) {
+          const entityId = login.vast || ibanMap[normIban(acc.iban)] || defaultEntity;
           const betalingen = await listPayments(context, acc.id);
           if (betalingen.length === 0) continue;
-          const rijen = betalingen.map((b) => ({ ...b, entity_id: ent.id, bron: 'bunq' }));
-          // Upsert op (bron, extern_id) voorkomt dubbele transacties.
+          const rijen = betalingen.map((b) => ({ ...b, entity_id: entityId, bron: 'bunq' }));
           const { error: upErr, count } = await supabase
             .from('transacties')
             .upsert(rijen, { onConflict: 'bron,extern_id', ignoreDuplicates: true, count: 'exact' });
           if (upErr) throw new Error(upErr.message);
           nieuw += count ?? rijen.length;
         }
-
-        resultaten.push({ entiteit: ent.naam, ok: true, rekeningen: accounts.length, verwerkt: nieuw });
+        resultaten.push({ entiteit: login.naam, ok: true, rekeningen: accounts.length, verwerkt: nieuw });
       } catch (err) {
-        resultaten.push({ entiteit: ent.naam, ok: false, reden: String(err.message || err) });
+        resultaten.push({ entiteit: login.naam, ok: false, reden: netteFout(err.message || err) });
       }
     }
 
