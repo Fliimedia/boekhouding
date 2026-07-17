@@ -23,6 +23,7 @@ const T = {
     btwKwartaalTabel: 'BTW per kwartaal', agendaTabel: 'Tijdlijn',
     kDatum: 'Datum', kTegenpartij: 'Tegenpartij', kOmschrijving: 'Omschrijving', kBedrag: 'Bedrag',
     kBron: 'Bron', bekijk: 'Openen', ongekoppeldTag: 'ongekoppeld',
+    sweepKnop: 'Historische import uit Gmail', sweepBezig: 'Bezig met importeren...',
     leegTx: 'Nog geen transacties. Klik op Synchroniseren.',
     leegFac: 'Nog geen facturen. Voeg er een toe of koppel je e-mail en Drive.',
     leegBtw: 'BTW verschijnt zodra er facturen zijn.',
@@ -43,6 +44,7 @@ const T = {
     btwKwartaalTabel: 'VAT per quarter', agendaTabel: 'Timeline',
     kDatum: 'Date', kTegenpartij: 'Counterparty', kOmschrijving: 'Description', kBedrag: 'Amount',
     kBron: 'Source', bekijk: 'Open', ongekoppeldTag: 'unmatched',
+    sweepKnop: 'Historic import from Gmail', sweepBezig: 'Importing...',
     leegTx: 'No transactions yet. Click Sync.',
     leegFac: 'No invoices yet. Add one or connect your email and Drive.',
     leegBtw: 'VAT appears once invoices exist.',
@@ -301,10 +303,20 @@ function Overzicht({ rows }) {
 }
 
 function Facturen({ entiteit, nonce }) {
-  const rows = useFacturen(entiteit, nonce);
+  const [lokaal, setLokaal] = useState(0);
+  const [sweepBezig, setSweepBezig] = useState(false);
+  const rows = useFacturen(entiteit, `${nonce}-${lokaal}`);
   const open = rows.filter((f) => f.status === 'open').length;
   const inkoop = rows.filter((f) => f.richting === 'inkoop').length;
   const verkoop = rows.filter((f) => f.richting === 'verkoop').length;
+
+  const sweep = () => {
+    setSweepBezig(true);
+    fetch('/api/ingest?mode=sweep', { method: 'POST' })
+      .catch(() => null)
+      .finally(() => { setSweepBezig(false); setLokaal((n) => n + 1); });
+  };
+
   return (
     <>
       <div className="bento">
@@ -317,6 +329,9 @@ function Facturen({ entiteit, nonce }) {
       <div className="folds">
         <Fold id="fa-tabel" titel={t.factuurTabel} openDefault><FacturenTabel rows={rows} /></Fold>
       </div>
+      <button className="ghost" onClick={sweep} disabled={sweepBezig}>
+        {sweepBezig ? t.sweepBezig : t.sweepKnop}
+      </button>
     </>
   );
 }
