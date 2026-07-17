@@ -27,7 +27,7 @@ const T = {
     voorgesteld: 'Voorgestelde factuur', geenFactuur: 'Geen factuur gekoppeld',
     bevestigen: 'Bevestigen', ontkoppelen: 'Ontkoppelen', anderBestand: 'Ander bestand',
     koppelBestand: 'Bestand koppelen', bedragKlopt: 'bedrag komt overeen', bedragWijkt: 'bedrag wijkt af',
-    bevestigdTag: 'bevestigd', bezigTag: 'Bezig...',
+    bevestigdTag: 'bevestigd', bezigTag: 'Bezig...', bunqReset: 'Bunq opnieuw koppelen',
     leegTx: 'Nog geen transacties. Klik op Synchroniseren.',
     leegFac: 'Nog geen facturen. Voeg er een toe of koppel je e-mail en Drive.',
     leegBtw: 'BTW verschijnt zodra er facturen zijn.',
@@ -52,7 +52,7 @@ const T = {
     voorgesteld: 'Suggested invoice', geenFactuur: 'No invoice linked',
     bevestigen: 'Confirm', ontkoppelen: 'Unlink', anderBestand: 'Other file',
     koppelBestand: 'Link file', bedragKlopt: 'amount matches', bedragWijkt: 'amount differs',
-    bevestigdTag: 'confirmed', bezigTag: 'Working...',
+    bevestigdTag: 'confirmed', bezigTag: 'Working...', bunqReset: 'Reconnect Bunq',
     leegTx: 'No transactions yet. Click Sync.',
     leegFac: 'No invoices yet. Add one or connect your email and Drive.',
     leegBtw: 'VAT appears once invoices exist.',
@@ -438,6 +438,12 @@ function TransactieLijst({ rows, reload }) {
 function Transacties({ rows, reload }) {
   const d = afgeleid(rows);
   const gekoppeld = rows.filter((r) => r.koppeling && r.koppeling.bevestigd).length;
+  const [resetBezig, setResetBezig] = useState(false);
+  const bunqReset = async () => {
+    setResetBezig(true);
+    await postJson('/api/bunq-sync?reset=1', {});
+    setResetBezig(false); reload();
+  };
   return (
     <>
       <div className="bento">
@@ -450,6 +456,9 @@ function Transacties({ rows, reload }) {
       <div className="folds">
         <Fold id="tx-tabel" titel={t.txTabel} openDefault><TransactieLijst rows={rows} reload={reload} /></Fold>
       </div>
+      <button className="ghost" onClick={bunqReset} disabled={resetBezig}>
+        {resetBezig ? t.bezigTag : t.bunqReset}
+      </button>
     </>
   );
 }
