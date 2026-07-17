@@ -1,7 +1,4 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "public",
-  "functions": {
-    "api/health.js": { "runtime": "nodejs20.x" }
-  }
+  "outputDirectory": "public"
 }
