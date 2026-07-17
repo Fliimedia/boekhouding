@@ -22,6 +22,7 @@ const T = {
     cashflow: 'Cashflow per maand', factuurTabel: 'Alle facturen', txTabel: 'Alle transacties',
     btwKwartaalTabel: 'BTW per kwartaal', agendaTabel: 'Tijdlijn',
     kDatum: 'Datum', kTegenpartij: 'Tegenpartij', kOmschrijving: 'Omschrijving', kBedrag: 'Bedrag',
+    kBron: 'Bron', bekijk: 'Openen', ongekoppeldTag: 'ongekoppeld',
     leegTx: 'Nog geen transacties. Klik op Synchroniseren.',
     leegFac: 'Nog geen facturen. Voeg er een toe of koppel je e-mail en Drive.',
     leegBtw: 'BTW verschijnt zodra er facturen zijn.',
@@ -41,6 +42,7 @@ const T = {
     cashflow: 'Cashflow per month', factuurTabel: 'All invoices', txTabel: 'All transactions',
     btwKwartaalTabel: 'VAT per quarter', agendaTabel: 'Timeline',
     kDatum: 'Date', kTegenpartij: 'Counterparty', kOmschrijving: 'Description', kBedrag: 'Amount',
+    kBron: 'Source', bekijk: 'Open', ongekoppeldTag: 'unmatched',
     leegTx: 'No transactions yet. Click Sync.',
     leegFac: 'No invoices yet. Add one or connect your email and Drive.',
     leegBtw: 'VAT appears once invoices exist.',
@@ -222,6 +224,45 @@ function useTransacties(entiteit, nonce) {
   return rows;
 }
 
+function useFacturen(entiteit, nonce) {
+  const [rows, setRows] = useState([]);
+  useEffect(() => {
+    let leeft = true;
+    fetch(`/api/facturen?type=${entiteit}`)
+      .then((r) => r.json())
+      .then((d) => { if (leeft) setRows(d.facturen || []); })
+      .catch(() => { if (leeft) setRows([]); });
+    return () => { leeft = false; };
+  }, [entiteit, nonce]);
+  return rows;
+}
+
+function FacturenTabel({ rows }) {
+  if (!rows.length) return <div className="empty">{t.leegFac}</div>;
+  return (
+    <table className="tx">
+      <thead>
+        <tr><th>{t.kDatum}</th><th>{t.kTegenpartij}</th><th>{t.kBron}</th><th style={{ textAlign: 'right' }}>{t.kBedrag}</th></tr>
+      </thead>
+      <tbody>
+        {rows.map((f) => (
+          <tr key={f.id}>
+            <td className="mono" style={{ whiteSpace: 'nowrap' }}>{f.bron_datum || f.factuurdatum || ''}</td>
+            <td>
+              {f.link ? <a href={f.link} target="_blank" rel="noreferrer" style={{ color: 'var(--ink)' }}>{f.tegenpartij || f.bestandsnaam || t.bekijk}</a> : (f.tegenpartij || f.bestandsnaam || '')}
+              {f.totaal == null && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--accent)' }}>{t.ongekoppeldTag}</span>}
+            </td>
+            <td style={{ color: '#5E6B64', textTransform: 'capitalize' }}>{f.bron || ''}</td>
+            <td className="mono" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: f.totaal == null ? '#9aa39d' : undefined }}>
+              {f.totaal == null ? '·' : eur(f.totaal)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function afgeleid(rows) {
   let inn = 0, uit = 0;
   const perMaand = {};
@@ -259,18 +300,22 @@ function Overzicht({ rows }) {
   );
 }
 
-function Facturen() {
+function Facturen({ entiteit, nonce }) {
+  const rows = useFacturen(entiteit, nonce);
+  const open = rows.filter((f) => f.status === 'open').length;
+  const inkoop = rows.filter((f) => f.richting === 'inkoop').length;
+  const verkoop = rows.filter((f) => f.richting === 'verkoop').length;
   return (
     <>
       <div className="bento">
-        <Hero soort="facturen" eyebrow={t.tabs.facturen} big={eur(0)} />
-        <Metric id="fa-open" icon={<FileText size={20} />} label={t.openstaand} value={eur(0)} />
-        <Metric id="fa-verkoop" icon={<TrendingUp size={20} />} label={t.verkoop} value={0} />
-        <Metric id="fa-inkoop" icon={<TrendingDown size={20} />} label={t.inkoop} value={0} />
-        <Metric id="fa-tot" icon={<Banknote size={20} />} label={t.tabs.facturen} value={0} />
+        <Hero soort="facturen" eyebrow={t.tabs.facturen} big={rows.length} />
+        <Metric id="fa-open" icon={<FileText size={20} />} label={t.openstaand} value={open} />
+        <Metric id="fa-verkoop" icon={<TrendingUp size={20} />} label={t.verkoop} value={verkoop} />
+        <Metric id="fa-inkoop" icon={<TrendingDown size={20} />} label={t.inkoop} value={inkoop} />
+        <Metric id="fa-tot" icon={<Banknote size={20} />} label={t.tabs.facturen} value={rows.length} />
       </div>
       <div className="folds">
-        <Fold id="fa-tabel" titel={t.factuurTabel}><div className="empty">{t.leegFac}</div></Fold>
+        <Fold id="fa-tabel" titel={t.factuurTabel} openDefault><FacturenTabel rows={rows} /></Fold>
       </div>
     </>
   );
@@ -374,8 +419,10 @@ function App() {
   const sync = () => {
     setSyncBezig(true);
     const q = entiteit === 'geconsolideerd' ? '' : `?type=${entiteit}`;
-    fetch(`/api/bunq-sync${q}`, { method: 'POST' }).catch(() => null)
-      .finally(() => { setSyncBezig(false); setNonce((n) => n + 1); });
+    Promise.allSettled([
+      fetch(`/api/bunq-sync${q}`, { method: 'POST' }),
+      fetch('/api/ingest', { method: 'POST' }),
+    ]).finally(() => { setSyncBezig(false); setNonce((n) => n + 1); });
   };
 
   const entKeuze = [
@@ -418,7 +465,7 @@ function App() {
         </div>
 
         {tab === 'overzicht' && <Overzicht rows={rows} />}
-        {tab === 'facturen' && <Facturen />}
+        {tab === 'facturen' && <Facturen entiteit={entiteit} nonce={nonce} />}
         {tab === 'transacties' && <Transacties rows={rows} />}
         {tab === 'btw' && <Btw />}
         {tab === 'agenda' && <Agenda />}
