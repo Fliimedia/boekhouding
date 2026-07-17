@@ -6,6 +6,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { pdfTekst, parseFacturen, claudeVelden } from '../lib/parse.js';
 
+export const maxDuration = 60;
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, reden: 'Gebruik POST' });
   const url = process.env.SUPABASE_URL, serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
