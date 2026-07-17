@@ -611,7 +611,7 @@ function App() {
           <div className="syncwrap">
             <button className="sync" onClick={sync} disabled={syncBezig}>
               <RefreshCw size={15} className={syncBezig ? 'spin' : ''} />
-              {syncBezig ? t.tabs.transacties : t.sync}
+              {t.tabs.transacties}
             </button>
             <StatusDot />
           </div>
