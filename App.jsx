@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   LayoutDashboard, FileText, ArrowLeftRight, Percent, Calendar,
@@ -24,6 +24,10 @@ const T = {
     kDatum: 'Datum', kTegenpartij: 'Tegenpartij', kOmschrijving: 'Omschrijving', kBedrag: 'Bedrag',
     kBron: 'Bron', bekijk: 'Openen', ongekoppeldTag: 'ongekoppeld',
     sweepKnop: 'Historische import uit Gmail', sweepBezig: 'Bezig met importeren...',
+    voorgesteld: 'Voorgestelde factuur', geenFactuur: 'Geen factuur gekoppeld',
+    bevestigen: 'Bevestigen', ontkoppelen: 'Ontkoppelen', anderBestand: 'Ander bestand',
+    koppelBestand: 'Bestand koppelen', bedragKlopt: 'bedrag komt overeen', bedragWijkt: 'bedrag wijkt af',
+    bevestigdTag: 'bevestigd', bezigTag: 'Bezig...',
     leegTx: 'Nog geen transacties. Klik op Synchroniseren.',
     leegFac: 'Nog geen facturen. Voeg er een toe of koppel je e-mail en Drive.',
     leegBtw: 'BTW verschijnt zodra er facturen zijn.',
@@ -45,6 +49,10 @@ const T = {
     kDatum: 'Date', kTegenpartij: 'Counterparty', kOmschrijving: 'Description', kBedrag: 'Amount',
     kBron: 'Source', bekijk: 'Open', ongekoppeldTag: 'unmatched',
     sweepKnop: 'Historic import from Gmail', sweepBezig: 'Importing...',
+    voorgesteld: 'Suggested invoice', geenFactuur: 'No invoice linked',
+    bevestigen: 'Confirm', ontkoppelen: 'Unlink', anderBestand: 'Other file',
+    koppelBestand: 'Link file', bedragKlopt: 'amount matches', bedragWijkt: 'amount differs',
+    bevestigdTag: 'confirmed', bezigTag: 'Working...',
     leegTx: 'No transactions yet. Click Sync.',
     leegFac: 'No invoices yet. Add one or connect your email and Drive.',
     leegBtw: 'VAT appears once invoices exist.',
@@ -336,9 +344,91 @@ function Facturen({ entiteit, nonce }) {
   );
 }
 
-function Transacties({ rows }) {
+async function postJson(url, body) {
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return await r.json();
+  } catch { return null; }
+}
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+function TransactieRij({ tx, reload }) {
+  const [open, setOpen] = useState(false);
+  const [bezig, setBezig] = useState(false);
+  const fileRef = useRef(null);
+  const k = tx.koppeling;
+  const bedrag = Number(tx.bedrag);
+  const match = k?.factuur?.totaal != null && Math.abs(k.factuur.totaal - Math.abs(bedrag)) < 0.02;
+
+  const doe = (p) => { setBezig(true); Promise.resolve(p).finally(() => { setBezig(false); reload(); }); };
+  const bevestig = () => doe(postJson('/api/koppeling', { transactie_id: tx.id, actie: 'bevestig' }));
+  const ontkoppel = () => doe(postJson('/api/koppeling', { transactie_id: tx.id, actie: 'verwijder' }));
+  const kies = (e) => { e.stopPropagation(); fileRef.current?.click(); };
+  const upload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBezig(true);
+    const data = await fileToBase64(file);
+    await postJson('/api/factuur-upload', { transactie_id: tx.id, bestandsnaam: file.name, data_base64: data });
+    setBezig(false); reload();
+  };
+
+  const stip = k ? (k.bevestigd ? '#2E7D5B' : '#B4823C') : 'transparent';
+
+  return (
+    <div className={`txitem${open ? ' open' : ''}`}>
+      <div className="txhead" onClick={() => setOpen((o) => !o)}>
+        <span className="txdot" style={{ background: stip }} />
+        <span className="mono txdate">{tx.datum}</span>
+        <span className="txname">{tx.tegenpartij || ''}</span>
+        <span className={`mono ${bedrag < 0 ? 'amt-neg' : 'amt-pos'}`}>{eur(bedrag)}</span>
+        <ChevronDown className="chev" size={16} />
+      </div>
+      {open && (
+        <div className="txbody">
+          {tx.omschrijving && <div className="txmeta">{tx.omschrijving}</div>}
+          <div className="txfac-label">{t.voorgesteld}</div>
+          {k && k.factuur ? (
+            <div className="txfac-row">
+              {k.factuur.link
+                ? <a href={k.factuur.link} target="_blank" rel="noreferrer">{k.factuur.bestandsnaam || k.factuur.tegenpartij || t.bekijk}</a>
+                : <span>{k.factuur.bestandsnaam || k.factuur.tegenpartij || ''}</span>}
+              <span className="mono">{k.factuur.totaal != null ? eur(k.factuur.totaal) : '·'}</span>
+              {k.factuur.totaal != null && (
+                <span className={match ? 'match-ok' : 'match-warn'}>{match ? t.bedragKlopt : t.bedragWijkt}</span>
+              )}
+              {k.bevestigd
+                ? <span className="chip">{t.bevestigdTag}</span>
+                : <button className="mini" onClick={bevestig} disabled={bezig}>{t.bevestigen}</button>}
+            </div>
+          ) : <div className="txfac-empty">{t.geenFactuur}</div>}
+          <div className="txfac-actions">
+            <button className="ghost small" onClick={kies} disabled={bezig}>+ {t.anderBestand}</button>
+            {k && <button className="ghost small" onClick={ontkoppel} disabled={bezig}>{t.ontkoppelen}</button>}
+            {bezig && <span className="txbezig">{t.bezigTag}</span>}
+            <input ref={fileRef} type="file" accept="application/pdf" style={{ display: 'none' }} onChange={upload} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TransactieLijst({ rows, reload }) {
+  if (!rows.length) return <div className="empty">{t.leegTx}</div>;
+  return <div className="txlist">{rows.map((r) => <TransactieRij key={r.id} tx={r} reload={reload} />)}</div>;
+}
+
+function Transacties({ rows, reload }) {
   const d = afgeleid(rows);
-  const gekoppeld = rows.filter((r) => r.gekoppeld).length;
+  const gekoppeld = rows.filter((r) => r.koppeling && r.koppeling.bevestigd).length;
   return (
     <>
       <div className="bento">
@@ -349,7 +439,7 @@ function Transacties({ rows }) {
         <Metric id="tx-in" icon={<TrendingUp size={20} />} label={t.inkomend} value={eur(d.inn)} tint={{ bg: 'rgba(46,125,91,0.12)', fg: '#2E7D5B' }} />
       </div>
       <div className="folds">
-        <Fold id="tx-tabel" titel={t.txTabel} openDefault><TxTabel rows={rows} /></Fold>
+        <Fold id="tx-tabel" titel={t.txTabel} openDefault><TransactieLijst rows={rows} reload={reload} /></Fold>
       </div>
     </>
   );
@@ -502,7 +592,7 @@ function App() {
 
         {tab === 'overzicht' && <Overzicht rows={rows} />}
         {tab === 'facturen' && <Facturen entiteit={entiteit} nonce={nonce} />}
-        {tab === 'transacties' && <Transacties rows={rows} />}
+        {tab === 'transacties' && <Transacties rows={rows} reload={() => setNonce((n) => n + 1)} />}
         {tab === 'btw' && <Btw entiteit={entiteit} nonce={nonce} />}
         {tab === 'agenda' && <Agenda />}
       </main>
