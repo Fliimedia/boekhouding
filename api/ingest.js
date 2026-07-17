@@ -11,6 +11,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { gmailFacturen, driveFacturen, gmailSweepPagina } from '../lib/google.js';
 
+export const maxDuration = 60;
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, reden: 'Gebruik POST' });
 
