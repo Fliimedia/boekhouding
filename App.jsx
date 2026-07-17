@@ -338,13 +338,14 @@ function Facturen({ entiteit, nonce }) {
 
 function Transacties({ rows }) {
   const d = afgeleid(rows);
+  const gekoppeld = rows.filter((r) => r.gekoppeld).length;
   return (
     <>
       <div className="bento">
         <Hero soort="transacties" eyebrow={t.tabs.transacties} big={d.count} />
         <Metric id="tx-maand" icon={<Calendar size={20} />} label={t.dezeMaand} value={d.dezeMaand} />
-        <Metric id="tx-gekoppeld" icon={<LinkIcon size={20} />} label={t.gekoppeld} value={0} />
-        <Metric id="tx-ongekoppeld" icon={<Unlink size={20} />} label={t.ongekoppeld} value={d.count} />
+        <Metric id="tx-gekoppeld" icon={<LinkIcon size={20} />} label={t.gekoppeld} value={gekoppeld} />
+        <Metric id="tx-ongekoppeld" icon={<Unlink size={20} />} label={t.ongekoppeld} value={d.count - gekoppeld} />
         <Metric id="tx-in" icon={<TrendingUp size={20} />} label={t.inkomend} value={eur(d.inn)} tint={{ bg: 'rgba(46,125,91,0.12)', fg: '#2E7D5B' }} />
       </div>
       <div className="folds">
@@ -354,17 +355,33 @@ function Transacties({ rows }) {
   );
 }
 
-function Btw() {
+function Btw({ entiteit, nonce }) {
+  const rows = useFacturen(entiteit, nonce);
+  const nu = new Date();
+  const qStart = new Date(nu.getFullYear(), Math.floor(nu.getMonth() / 3) * 3, 1);
+  const qEind = new Date(qStart.getFullYear(), qStart.getMonth() + 3, 1);
+  const inKwartaal = (f) => {
+    const d = new Date(f.factuurdatum || f.bron_datum || 0);
+    return d >= qStart && d < qEind;
+  };
+  const kwart = rows.filter((f) => f.totaal != null && inKwartaal(f));
+  const som = (pred) => kwart.filter(pred).reduce((a, f) => a + Number(f.btw_bedrag || 0), 0);
+  const verkoopBtw = som((f) => f.richting === 'verkoop');
+  const inkoopBtw = som((f) => f.richting === 'inkoop');
+  const teBetalen = verkoopBtw - inkoopBtw;
+
   return (
     <>
       <div className="bento">
-        <Hero soort="btw" eyebrow={t.tabs.btw} big={eur(0)} />
-        <Metric id="btw-tebetalen" icon={<Landmark size={20} />} label={t.teBetalen} value={eur(0)} />
-        <Metric id="btw-tarief" icon={<Percent size={20} />} label={t.tarief21} value={eur(0)} />
-        <Metric id="btw-laag" icon={<Percent size={20} />} label={t.tarief9} value={eur(0)} />
+        <Hero soort="btw" eyebrow={t.tabs.btw} big={eur(teBetalen)} />
+        <Metric id="btw-tebetalen" icon={<Landmark size={20} />} label={t.teBetalen} value={eur(teBetalen)} />
+        <Metric id="btw-tarief" icon={<Percent size={20} />} label={t.tarief21} value={eur(som((f) => f.btw_tarief === '21'))} />
+        <Metric id="btw-laag" icon={<Percent size={20} />} label={t.tarief9} value={eur(som((f) => f.btw_tarief === '9'))} />
       </div>
       <div className="folds">
-        <Fold id="btw-kwartaal" titel={t.btwKwartaalTabel}><div className="empty">{t.leegBtw}</div></Fold>
+        <Fold id="btw-kwartaal" titel={t.btwKwartaalTabel} openDefault>
+          {kwart.length === 0 ? <div className="empty">{t.leegBtw}</div> : <FacturenTabel rows={kwart} />}
+        </Fold>
       </div>
     </>
   );
@@ -437,7 +454,11 @@ function App() {
     Promise.allSettled([
       fetch(`/api/bunq-sync${q}`, { method: 'POST' }),
       fetch('/api/ingest', { method: 'POST' }),
-    ]).finally(() => { setSyncBezig(false); setNonce((n) => n + 1); });
+    ])
+      .then(() => fetch('/api/parse', { method: 'POST' }))
+      .then(() => fetch('/api/match', { method: 'POST' }))
+      .catch(() => null)
+      .finally(() => { setSyncBezig(false); setNonce((n) => n + 1); });
   };
 
   const entKeuze = [
@@ -482,7 +503,7 @@ function App() {
         {tab === 'overzicht' && <Overzicht rows={rows} />}
         {tab === 'facturen' && <Facturen entiteit={entiteit} nonce={nonce} />}
         {tab === 'transacties' && <Transacties rows={rows} />}
-        {tab === 'btw' && <Btw />}
+        {tab === 'btw' && <Btw entiteit={entiteit} nonce={nonce} />}
         {tab === 'agenda' && <Agenda />}
       </main>
     </div>
