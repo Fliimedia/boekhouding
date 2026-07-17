@@ -18,6 +18,14 @@ const KEY_PER_TYPE = {
   werkmaatschappij: 'BUNQ_API_KEY_WERKMAATSCHAPPIJ',
 };
 
+function netteFout(msg) {
+  const s = String(msg || '');
+  if (s.includes('<!DOCTYPE') || s.includes('<html')) {
+    return 'Supabase antwoordt met een dashboard-pagina. SUPABASE_URL wijst naar het dashboard in plaats van de project-API. Gebruik de Project URL (https://<ref>.supabase.co) uit Project Settings, API.';
+  }
+  return s.slice(0, 300);
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, reden: 'Gebruik POST' });
@@ -35,7 +43,7 @@ export default async function handler(req, res) {
       .from('entiteiten')
       .select('id, naam, type')
       .in('type', filterType ? [filterType] : ['holding', 'werkmaatschappij']);
-    if (entError) return res.status(200).json({ ok: false, reden: `entiteiten: ${entError.message}` });
+    if (entError) return res.status(200).json({ ok: false, reden: `entiteiten: ${netteFout(entError.message)}` });
     if (!entiteiten || entiteiten.length === 0) {
       return res.status(200).json({ ok: false, reden: 'Geen entiteiten gevonden. Draai schema-all.sql in Supabase.' });
     }
@@ -106,6 +114,6 @@ export default async function handler(req, res) {
     const allesOk = resultaten.every((r) => r.ok);
     return res.status(200).json({ ok: allesOk, resultaten });
   } catch (err) {
-    return res.status(200).json({ ok: false, reden: `onverwacht: ${String(err.message || err)}` });
+    return res.status(200).json({ ok: false, reden: `onverwacht: ${netteFout(err.message || err)}` });
   }
 }
