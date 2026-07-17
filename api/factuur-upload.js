@@ -8,7 +8,7 @@ import { pdfTekst, parseFacturen, claudeVelden } from '../lib/parse.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, reden: 'Gebruik POST' });
-  const url = process.env.SUPABASE_URL, serviceKey = process.env.SUPABASE_SERVICE_KEY;
+  const url = process.env.SUPABASE_URL, serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
   if (!url || !serviceKey) return res.status(500).json({ ok: false, reden: 'Supabase env vars ontbreken' });
   const supabase = createClient(url, serviceKey);
 
