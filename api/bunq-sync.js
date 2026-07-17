@@ -26,6 +26,16 @@ function netteFout(msg) {
   return s.slice(0, 300);
 }
 
+function sleutelRol(key) {
+  try {
+    if (!key) return 'geen';
+    if (key.startsWith('sb_secret_')) return 'service';
+    if (key.startsWith('sb_publishable_')) return 'anon';
+    const payload = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString());
+    return payload.role || 'onbekend';
+  } catch { return 'onbekend'; }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, reden: 'Gebruik POST' });
@@ -45,7 +55,13 @@ export default async function handler(req, res) {
       .in('type', filterType ? [filterType] : ['holding', 'werkmaatschappij']);
     if (entError) return res.status(200).json({ ok: false, reden: `entiteiten: ${netteFout(entError.message)}` });
     if (!entiteiten || entiteiten.length === 0) {
-      return res.status(200).json({ ok: false, reden: 'Geen entiteiten gevonden. Draai schema-all.sql in Supabase.' });
+      const { count: totaal } = await supabase.from('entiteiten').select('*', { count: 'exact', head: true });
+      const rol = sleutelRol(serviceKey);
+      let hint;
+      if ((totaal || 0) > 0) hint = `Er zijn ${totaal} entiteiten, maar geen met type holding of werkmaatschappij.`;
+      else if (rol === 'anon') hint = 'Je gebruikt de anon/publishable sleutel. Gebruik de service_role (secret) sleutel, anders verbergt de rij-beveiliging de data.';
+      else hint = 'Deze database is leeg. Draai schema-all.sql in DIT project (de Project URL die je nu gebruikt).';
+      return res.status(200).json({ ok: false, reden: `Geen entiteiten. ${hint} (rijen: ${totaal || 0}, sleutel: ${rol})` });
     }
 
     // Reset: wis de opgeslagen handshake zodat een wildcard-key opnieuw registreert.
