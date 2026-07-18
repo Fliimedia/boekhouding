@@ -23,7 +23,14 @@ export default async function handler(req, res) {
   const { data, error } = await q;
   if (error) return res.status(500).json({ ok: false, reden: error.message });
 
-  // Tijdelijke links naar de bronbestanden.
+  // Tijdelijke links naar de bronbestanden plus gekoppelde transactie.
+  const ids = data.map((f) => f.id);
+  const koppMap = {};
+  if (ids.length) {
+    const { data: kopp } = await supabase
+      .from('koppelingen').select('factuur_id, transactie_id, bevestigd').in('factuur_id', ids);
+    for (const k of kopp || []) koppMap[k.factuur_id] = { transactie_id: k.transactie_id, bevestigd: k.bevestigd };
+  }
   const facturen = [];
   for (const f of data) {
     let link = null;
@@ -31,7 +38,7 @@ export default async function handler(req, res) {
       const { data: sign } = await supabase.storage.from('facturen').createSignedUrl(f.bronbestand_url, 3600);
       link = sign?.signedUrl || null;
     }
-    facturen.push({ ...f, link });
+    facturen.push({ ...f, link, koppeling: koppMap[f.id] || null });
   }
 
   return res.status(200).json({ ok: true, facturen });
