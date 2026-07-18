@@ -39,8 +39,8 @@ export default async function handler(req, res) {
   try {
     if (process.env.GOOGLE_REFRESH_TOKEN) {
       if (sweep) {
-        const q = process.env.GMAIL_SWEEP_QUERY
-          || 'has:attachment filename:pdf newer_than:1095d (factuur OR invoice OR rekening OR receipt OR bon)';
+        const jaar = new Date().getFullYear();
+        const q = process.env.GMAIL_SWEEP_QUERY || `has:attachment filename:pdf after:${jaar}/1/1`;
         const { items: g, nextPageToken } = await gmailSweepPagina({ query: q, pageToken, maxMails: 30 });
         for (const x of g) items.push(x);
         sweepNext = nextPageToken;
