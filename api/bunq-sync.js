@@ -76,6 +76,10 @@ export default async function handler(req, res) {
     for (const e of ibanRows || []) { if (e && e.iban) ibanMap[normIban(e.iban)] = e.id; }
     if (process.env.BUNQ_IBAN_HOLDING && holdingId) ibanMap[normIban(process.env.BUNQ_IBAN_HOLDING)] = holdingId;
     if (process.env.BUNQ_IBAN_WERKMAATSCHAPPIJ && werkId) ibanMap[normIban(process.env.BUNQ_IBAN_WERKMAATSCHAPPIJ)] = werkId;
+    // Ingebouwde standaard voor de twee bekende rekeningen, als terugval.
+    const STANDAARD = { werkmaatschappij: 'NL23BUNQ2060789095', holding: 'NL95BUNQ2060792940' };
+    if (werkId && !Object.values(ibanMap).includes(werkId)) ibanMap[normIban(STANDAARD.werkmaatschappij)] = werkId;
+    if (holdingId && !Object.values(ibanMap).includes(holdingId)) ibanMap[normIban(STANDAARD.holding)] = holdingId;
 
     // Logins bepalen: per entiteit een eigen sleutel, of een gedeelde sleutel.
     const logins = [];
@@ -119,6 +123,7 @@ export default async function handler(req, res) {
         const sinds = maand ? d30 : `${new Date().getFullYear()}-01-01`;
         let nieuw = 0, gebruikt = 0;
         for (const acc of accounts) {
+          if (acc.status !== 'ACTIVE') continue;
           // Harde afscherming: alleen rekeningen die expliciet aan een entiteit
           // gekoppeld zijn worden gebruikt. Andere rekeningen nooit.
           const entityId = login.vast && ibanMap[normIban(acc.iban)] === login.vast
@@ -135,7 +140,11 @@ export default async function handler(req, res) {
           if (upErr) throw new Error(upErr.message);
           nieuw += count ?? rijen.length;
         }
-        resultaten.push({ entiteit: login.naam, ok: true, rekeningen: gebruikt, verwerkt: nieuw });
+        resultaten.push({
+          entiteit: login.naam, ok: true, rekeningen: gebruikt, verwerkt: nieuw,
+          gevonden: accounts.map((a) => ({ iban: a.iban, status: a.status })),
+          ingesteld: Object.keys(ibanMap),
+        });
       } catch (err) {
         resultaten.push({ entiteit: login.naam, ok: false, reden: netteFout(err.message || err) });
       }
