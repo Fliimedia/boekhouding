@@ -115,9 +115,15 @@ export default async function handler(req, res) {
         const context = await ensureContext({ apiKey: login.key, ctx: ctxRow || {}, save });
         const accounts = await listMonetaryAccounts(context);
         const jaarStart = `${new Date().getFullYear()}-01-01`;
-        let nieuw = 0;
+        let nieuw = 0, gebruikt = 0;
         for (const acc of accounts) {
-          const entityId = login.vast || ibanMap[normIban(acc.iban)] || defaultEntity;
+          // Harde afscherming: alleen rekeningen die expliciet aan een entiteit
+          // gekoppeld zijn worden gebruikt. Andere rekeningen nooit.
+          const entityId = login.vast && ibanMap[normIban(acc.iban)] === login.vast
+            ? login.vast
+            : ibanMap[normIban(acc.iban)];
+          if (!entityId) continue;
+          gebruikt += 1;
           const betalingen = await listPayments(context, acc.id, { sinds: jaarStart });
           if (betalingen.length === 0) continue;
           const rijen = betalingen.map((b) => ({ ...b, entity_id: entityId, rekening_iban: acc.iban, bron: 'bunq' }));
@@ -127,7 +133,15 @@ export default async function handler(req, res) {
           if (upErr) throw new Error(upErr.message);
           nieuw += count ?? rijen.length;
         }
-        resultaten.push({ entiteit: login.naam, ok: true, rekeningen: accounts.length, verwerkt: nieuw });
+        // Opruimen: transacties van rekeningen die niet aan een entiteit zijn
+        // gekoppeld horen niet in de administratie.
+        const bekend = Object.keys(ibanMap);
+        if (bekend.length) {
+          await supabase.from('transacties').delete()
+            .eq('bron', 'bunq')
+            .or(`rekening_iban.is.null,rekening_iban.not.in.(${bekend.map((x) => `"${x}"`).join(',')})`);
+        }
+        resultaten.push({ entiteit: login.naam, ok: true, rekeningen: gebruikt, verwerkt: nieuw });
       } catch (err) {
         resultaten.push({ entiteit: login.naam, ok: false, reden: netteFout(err.message || err) });
       }
