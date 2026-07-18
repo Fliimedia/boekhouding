@@ -76,10 +76,12 @@ export default async function handler(req, res) {
     for (const e of ibanRows || []) { if (e && e.iban) ibanMap[normIban(e.iban)] = e.id; }
     if (process.env.BUNQ_IBAN_HOLDING && holdingId) ibanMap[normIban(process.env.BUNQ_IBAN_HOLDING)] = holdingId;
     if (process.env.BUNQ_IBAN_WERKMAATSCHAPPIJ && werkId) ibanMap[normIban(process.env.BUNQ_IBAN_WERKMAATSCHAPPIJ)] = werkId;
-    // Ingebouwde standaard voor de twee bekende rekeningen, als terugval.
-    const STANDAARD = { werkmaatschappij: 'NL23BUNQ2060789095', holding: 'NL95BUNQ2060792940' };
-    if (werkId && !Object.values(ibanMap).includes(werkId)) ibanMap[normIban(STANDAARD.werkmaatschappij)] = werkId;
-    if (holdingId && !Object.values(ibanMap).includes(holdingId)) ibanMap[normIban(STANDAARD.holding)] = holdingId;
+    // Ingebouwde standaard voor de twee actieve rekeningen. Altijd toegevoegd,
+    // zodat eventueel oude opgeslagen IBANs niet in de weg zitten.
+    // Aanname mapping: NL23...0722 werkmaatschappij, NL29...5473 holding.
+    const STANDAARD = { werkmaatschappij: 'NL23BUNQ2199740722', holding: 'NL29BUNQ2197795473' };
+    if (werkId) ibanMap[normIban(STANDAARD.werkmaatschappij)] = werkId;
+    if (holdingId) ibanMap[normIban(STANDAARD.holding)] = holdingId;
 
     // Logins bepalen: per entiteit een eigen sleutel, of een gedeelde sleutel.
     const logins = [];
