@@ -670,7 +670,7 @@ function App() {
             <StatusHub onRefresh={reload} />
           </div>
         </div>
-        {syncMsg && <div className={`syncmsg${syncMsg.ok ? '' : ' err'}`}>{syncMsg.text}</div>}
+
 
         {tab === 'overzicht' && <Overzicht txs={txs} facs={facs} />}
         {tab === 'facturen' && <FacturenTab entiteit={entiteit} nonce={nonce} reload={reload} gaNaarTx={gaNaarTx} />}
