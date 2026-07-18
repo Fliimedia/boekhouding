@@ -175,7 +175,8 @@ function StatusHub({ onRefresh }) {
 
   const ververs = async (kanaal) => {
     setBezig(kanaal);
-    if (kanaal === 'bank') await postJson('/api/bunq-sync');
+    if (kanaal === 'bank') await postJson('/api/bunq-sync?maand=1');
+    else if (kanaal === 'gmail') await postJson('/api/ingest?mode=maand');
     else await postJson('/api/ingest');
     await postJson('/api/parse'); await postJson('/api/match');
     setBezig(null); laad(); onRefresh();
@@ -183,6 +184,8 @@ function StatusHub({ onRefresh }) {
 
   const volledigeScan = async () => {
     setScanBezig(true); setScanN(0);
+    // Bank volledig (heel het jaar) plus de hele mailbox.
+    await postJson('/api/bunq-sync');
     let meer = true, veilig = 0, totaal = 0;
     while (meer && veilig < 120) {
       const r = await postJson('/api/ingest?mode=sweep');
@@ -190,8 +193,9 @@ function StatusHub({ onRefresh }) {
       totaal += r.nieuw || 0; setScanN(totaal);
       meer = !!r.meer; veilig += 1;
     }
+    // Parsen tot alles bekeken is (gaat door ook als een enkel bestand faalt).
     let p = 0;
-    while (p < 80) { const r = await postJson('/api/parse'); if (!r || !r.ok || (r.bekeken || 0) === 0) break; p += 1; }
+    while (p < 120) { const r = await postJson('/api/parse'); if (!r || (r.bekeken || 0) === 0) break; p += 1; }
     await postJson('/api/match');
     setScanBezig(false); laad(); onRefresh();
   };
@@ -586,8 +590,8 @@ function App() {
 
   const sync = useCallback(async () => {
     setSyncBezig(true);
-    await postJson('/api/bunq-sync');
-    await postJson('/api/ingest');
+    await postJson('/api/bunq-sync?maand=1');
+    await postJson('/api/ingest?mode=maand');
     await postJson('/api/parse');
     await postJson('/api/match');
     setSyncBezig(false); setNonce((n) => n + 1);
