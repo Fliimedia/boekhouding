@@ -15,12 +15,14 @@ export default async function handler(req, res) {
   if (!url || !serviceKey) return res.status(500).json({ ok: false, reden: 'Supabase env vars ontbreken' });
   const supabase = createClient(url, serviceKey);
 
-  // Onverwerkte facturen met een bronbestand.
+  // Onverwerkte facturen met een bronbestand, nog niet eerder geprobeerd.
   const { data: facturen, error } = await supabase
     .from('facturen')
     .select('id, bronbestand_url')
     .is('totaal', null)
+    .is('parse_bron', null)
     .not('bronbestand_url', 'is', null)
+    .eq('verwijderd', false)
     .limit(15);
   if (error) return res.status(500).json({ ok: false, reden: error.message });
 
@@ -62,5 +64,5 @@ export default async function handler(req, res) {
     } catch (e) { fouten.push(`factuur ${f.id}: ${e.message}`); }
   }
 
-  return res.status(200).json({ ok: fouten.length === 0, verwerkt, viaAi, review, fouten });
+  return res.status(200).json({ ok: fouten.length === 0, bekeken: facturen.length, verwerkt, viaAi, review, fouten });
 }
