@@ -4,6 +4,7 @@ import {
   LayoutDashboard, FileText, ArrowLeftRight, Percent, Banknote, Briefcase,
   TrendingUp, TrendingDown, Wallet, Landmark, Unlink, Upload, Download,
   ChevronDown, RefreshCw, CircleDollarSign, CheckCircle2, XCircle,
+  Trash2, RotateCcw, Mail,
 } from 'lucide-react';
 
 const T = {
@@ -23,6 +24,7 @@ const T = {
     leegTx: 'Nog geen transacties.', leegFac: 'Nog geen facturen.', leegBtw: 'Nog geen BTW-gegevens.', leegAbo: 'Nog geen terugkerende diensten herkend.',
     statusTitel: 'Verbindingen', bank: 'Bank', verversen: 'Verversen', transactiesLbl: 'transacties', facturenLbl: 'facturen',
     verbonden: 'Verbonden', nietVerbonden: 'Niet verbonden', bezig: 'Bezig...',
+    volledigeScan: 'Volledige mailbox scannen', prullenbak: 'Prullenbak', herstel: 'Herstellen', verwijder: 'Verwijderen', scanKlaar: 'Scan klaar',
   },
   en: {
     geconsolideerd: 'Consolidated', holding: 'Holding', werk: 'Operating company',
@@ -40,6 +42,7 @@ const T = {
     leegTx: 'No transactions yet.', leegFac: 'No invoices yet.', leegBtw: 'No VAT data yet.', leegAbo: 'No recurring services detected yet.',
     statusTitel: 'Connections', bank: 'Bank', verversen: 'Refresh', transactiesLbl: 'transactions', facturenLbl: 'invoices',
     verbonden: 'Connected', nietVerbonden: 'Not connected', bezig: 'Working...',
+    volledigeScan: 'Scan full mailbox', prullenbak: 'Trash', herstel: 'Restore', verwijder: 'Delete', scanKlaar: 'Scan done',
   },
 };
 const taal = (navigator.language || 'nl').toLowerCase().startsWith('en') ? 'en' : 'nl';
@@ -161,6 +164,8 @@ function StatusHub({ onRefresh }) {
   const [open, setOpen] = useState(false);
   const [st, setSt] = useState(null);
   const [bezig, setBezig] = useState(null);
+  const [scanBezig, setScanBezig] = useState(false);
+  const [scanN, setScanN] = useState(0);
   const laad = useCallback(async () => setSt(await getJson('/api/status')), []);
   useEffect(() => { laad(); }, [laad]);
 
@@ -174,6 +179,21 @@ function StatusHub({ onRefresh }) {
     else await postJson('/api/ingest');
     await postJson('/api/parse'); await postJson('/api/match');
     setBezig(null); laad(); onRefresh();
+  };
+
+  const volledigeScan = async () => {
+    setScanBezig(true); setScanN(0);
+    let meer = true, veilig = 0, totaal = 0;
+    while (meer && veilig < 120) {
+      const r = await postJson('/api/ingest?mode=sweep');
+      if (!r || !r.ok) break;
+      totaal += r.nieuw || 0; setScanN(totaal);
+      meer = !!r.meer; veilig += 1;
+    }
+    let p = 0;
+    while (p < 80) { const r = await postJson('/api/parse'); if (!r || !r.ok || (r.bekeken || 0) === 0) break; p += 1; }
+    await postJson('/api/match');
+    setScanBezig(false); laad(); onRefresh();
   };
 
   const Rij = ({ naam, ok, detail, kanaal }) => (
@@ -202,6 +222,9 @@ function StatusHub({ onRefresh }) {
           <Rij naam="Gmail" ok={!!st.gmail?.ok} kanaal="gmail"
             detail={st.gmail?.ok ? `${st.gmail.facturen} ${t.facturenLbl}` : st.gmail?.reden} />
           <Rij naam="Drive" ok={!!st.drive?.ok} kanaal="drive" detail={st.drive?.reden} />
+          <button className="scanbtn" onClick={volledigeScan} disabled={scanBezig}>
+            <Mail size={13} className={scanBezig ? 'spin' : ''} /> {scanBezig ? `${t.bezig} ${scanN}` : t.volledigeScan}
+          </button>
         </div>
       )}
     </div>
@@ -273,12 +296,19 @@ function Overzicht({ txs, facs }) {
 
 function FacturenTab({ entiteit, nonce, reload, gaNaarTx }) {
   const facs = useFacturen(entiteit, nonce);
+  const [trash, setTrash] = useState([]);
   const [bezig, setBezig] = useState(false);
   const fileRef = useRef(null);
   const ongekoppeld = facs.filter((f) => !f.koppeling);
   const openstaand = facs.filter((f) => f.status === 'open');
   const [filter, setFilter] = useState('ongekoppeld');
   const lijst = filter === 'ongekoppeld' ? ongekoppeld : filter === 'open' ? openstaand : facs;
+
+  useEffect(() => {
+    let leeft = true;
+    getJson(`/api/facturen?type=${entiteit}&prullenbak=1`).then((d) => { if (leeft) setTrash(d?.facturen || []); });
+    return () => { leeft = false; };
+  }, [entiteit, nonce]);
 
   const upload = async (e) => {
     const file = e.target.files?.[0];
@@ -289,6 +319,7 @@ function FacturenTab({ entiteit, nonce, reload, gaNaarTx }) {
     await postJson('/api/match');
     setBezig(false); reload();
   };
+  const doeActie = async (id, actie) => { await postJson('/api/factuur-actie', { factuur_id: id, actie }); reload(); };
 
   return (
     <>
@@ -310,11 +341,11 @@ function FacturenTab({ entiteit, nonce, reload, gaNaarTx }) {
           <input ref={fileRef} type="file" accept="application/pdf" style={{ display: 'none' }} onChange={upload} />
         </button>
       </div>
-      <div className="card tabelcard">
+      <div className="card tabelcard" id="fa-tabel">
         {lijst.length === 0 ? <div className="empty">{t.leegFac}</div> : (
           <table className="tx compact">
             <thead>
-              <tr><th>{t.kBestand}</th><th>{t.kDatum}</th><th>{t.kNaam}</th><th className="r">{t.kBedrag}</th><th className="c">{t.kKoppel}</th><th className="c">{t.kDownload}</th></tr>
+              <tr><th>{t.kBestand}</th><th>{t.kDatum}</th><th>{t.kNaam}</th><th className="r">{t.kBedrag}</th><th className="c">{t.kKoppel}</th><th className="c">{t.kDownload}</th><th className="c"></th></tr>
             </thead>
             <tbody>
               {lijst.map((f) => (
@@ -329,12 +360,30 @@ function FacturenTab({ entiteit, nonce, reload, gaNaarTx }) {
                       : <span className="icobtn dim"><CircleDollarSign size={16} /></span>}
                   </td>
                   <td className="c">{f.link ? <a className="icobtn" href={f.link} target="_blank" rel="noreferrer"><Download size={16} /></a> : '·'}</td>
+                  <td className="c"><button className="icobtn fout" onClick={() => doeActie(f.id, 'verwijder')} title={t.verwijder}><Trash2 size={15} /></button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+      <Fold id="fa-prullenbak" titel={`${t.prullenbak} (${trash.length})`}>
+        {trash.length === 0 ? <div className="empty">-</div> : (
+          <table className="tx compact">
+            <tbody>
+              {trash.map((f) => (
+                <tr key={f.id}>
+                  <td className="ell">{f.bestandsnaam || '·'}</td>
+                  <td className="mono nw">{f.factuurdatum || f.bron_datum || ''}</td>
+                  <td className="ell">{f.tegenpartij || ''}</td>
+                  <td className="mono r nw">{f.totaal != null ? eur(f.totaal) : '·'}</td>
+                  <td className="c"><button className="icobtn" onClick={() => doeActie(f.id, 'herstel')} title={t.herstel}><RotateCcw size={15} /></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Fold>
     </>
   );
 }
