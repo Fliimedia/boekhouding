@@ -604,7 +604,7 @@ function App() {
       if (nw === 0 && rek === 0) {
         const res0 = (r.resultaten || [])[0] || {};
         const gev = (res0.gevonden || []).map((a) => `${a.iban || '?'}${a.status !== 'ACTIVE' ? ` (${a.status})` : ''}`).join(', ');
-        setSyncMsg({ ok: false, text: `Geen rekening verwerkt. Bunq geeft: ${gev || 'niets'}. Ingesteld: ${(res0.ingesteld || []).join(', ') || 'niets'}.` });
+        setSyncMsg({ ok: false, text: `Geen rekening verwerkt. Omgeving: ${res0.base || '?'}, gebruiker ${res0.user_id || '?'} (${res0.user_type || '?'}). Bunq geeft: ${gev || 'niets'}. Ingesteld: ${(res0.ingesteld || []).join(', ') || 'niets'}.` });
       } else {
         setSyncMsg({ ok: true, text: `Bank: ${nw} verwerkt, ${rek} rekeningen` });
       }
