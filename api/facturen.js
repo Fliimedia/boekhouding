@@ -15,9 +15,10 @@ export default async function handler(req, res) {
 
   let q = supabase
     .from('facturen')
-    .select('id, entity_id, richting, tegenpartij, factuurdatum, bron_datum, totaal, status, bron, bestandsnaam, bronbestand_url')
+    .select('id, entity_id, richting, tegenpartij, factuurdatum, bron_datum, totaal, status, bron, bestandsnaam, bronbestand_url, verwijderd')
+    .eq('verwijderd', req.query?.prullenbak === '1')
     .order('bron_datum', { ascending: false, nullsFirst: false })
-    .limit(200);
+    .limit(300);
   if (entityIds) q = q.in('entity_id', entityIds);
 
   const { data, error } = await q;
