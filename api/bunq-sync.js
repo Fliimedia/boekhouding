@@ -9,7 +9,7 @@
 //          POST /api/bunq-sync?type=holding
 
 import { createClient } from '@supabase/supabase-js';
-import { ensureContext, listMonetaryAccounts, listPayments } from '../lib/bunq.js';
+import { ensureContext, listMonetaryAccounts, listPayments, bunqBase } from '../lib/bunq.js';
 
 export const maxDuration = 60;
 
@@ -146,6 +146,7 @@ export default async function handler(req, res) {
           entiteit: login.naam, ok: true, rekeningen: gebruikt, verwerkt: nieuw,
           gevonden: accounts.map((a) => ({ iban: a.iban, status: a.status })),
           ingesteld: Object.keys(ibanMap),
+          base: bunqBase(), user_id: context.session_user_id, user_type: context.session_user_type,
         });
       } catch (err) {
         resultaten.push({ entiteit: login.naam, ok: false, reden: netteFout(err.message || err) });
