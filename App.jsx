@@ -24,7 +24,7 @@ const T = {
     leegTx: 'Nog geen transacties.', leegFac: 'Nog geen facturen.', leegBtw: 'Nog geen BTW-gegevens.', leegAbo: 'Nog geen terugkerende diensten herkend.',
     statusTitel: 'Verbindingen', bank: 'Bank', verversen: 'Verversen', transactiesLbl: 'transacties', facturenLbl: 'facturen',
     verbonden: 'Verbonden', nietVerbonden: 'Niet verbonden', bezig: 'Bezig...',
-    volledigeScan: 'Volledige mailbox scannen', prullenbak: 'Prullenbak', herstel: 'Herstellen', verwijder: 'Verwijderen', scanKlaar: 'Scan klaar',
+    volledigeScan: 'Alles ophalen (heel dit jaar)', prullenbak: 'Prullenbak', herstel: 'Herstellen', verwijder: 'Verwijderen', scanKlaar: 'Scan klaar',
   },
   en: {
     geconsolideerd: 'Consolidated', holding: 'Holding', werk: 'Operating company',
@@ -42,7 +42,7 @@ const T = {
     leegTx: 'No transactions yet.', leegFac: 'No invoices yet.', leegBtw: 'No VAT data yet.', leegAbo: 'No recurring services detected yet.',
     statusTitel: 'Connections', bank: 'Bank', verversen: 'Refresh', transactiesLbl: 'transactions', facturenLbl: 'invoices',
     verbonden: 'Connected', nietVerbonden: 'Not connected', bezig: 'Working...',
-    volledigeScan: 'Scan full mailbox', prullenbak: 'Trash', herstel: 'Restore', verwijder: 'Delete', scanKlaar: 'Scan done',
+    volledigeScan: 'Fetch everything (this year)', prullenbak: 'Trash', herstel: 'Restore', verwijder: 'Delete', scanKlaar: 'Scan done',
   },
 };
 const taal = (navigator.language || 'nl').toLowerCase().startsWith('en') ? 'en' : 'nl';
@@ -606,7 +606,10 @@ function App() {
         const gev = (res0.gevonden || []).map((a) => `${a.iban || '?'}${a.status !== 'ACTIVE' ? ` (${a.status})` : ''}`).join(', ');
         setSyncMsg({ ok: false, text: `Geen rekening verwerkt. Omgeving: ${res0.base || '?'}, gebruiker ${res0.user_id || '?'} (${res0.user_type || '?'}). Bunq geeft: ${gev || 'niets'}. Ingesteld: ${(res0.ingesteld || []).join(', ') || 'niets'}.` });
       } else {
-        setSyncMsg({ ok: true, text: `Bank: ${nw} verwerkt, ${rek} rekeningen` });
+        const res0 = (r.resultaten || [])[0] || {};
+        const ibans = (res0.gebruiktIbans || []).join(', ');
+        const scope = res0.maand ? 'maand' : 'jaar';
+        setSyncMsg({ ok: true, text: `Bank (${scope}): ${nw} verwerkt, ${rek} rekeningen${ibans ? ` (${ibans})` : ''}` });
       }
     }
     await postJson('/api/ingest?mode=maand');
