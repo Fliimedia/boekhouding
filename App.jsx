@@ -1,367 +1,59 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  LayoutDashboard, FileText, ArrowLeftRight, Percent, Calendar,
-  TrendingUp, TrendingDown, Wallet, Landmark, Link as LinkIcon, Unlink,
-  Clock, Banknote, ChevronDown, RefreshCw,
+  LayoutDashboard, FileText, ArrowLeftRight, Percent, Banknote, Briefcase,
+  TrendingUp, TrendingDown, Wallet, Landmark, Unlink, Upload, Download,
+  ChevronDown, RefreshCw, CircleDollarSign, CheckCircle2, XCircle,
 } from 'lucide-react';
 
-// i18n: Nederlands default, Engels bij Engelse browsertaal.
 const T = {
   nl: {
-    titel: 'Boekhouding',
     geconsolideerd: 'Geconsolideerd', holding: 'Holding', werk: 'Werkmaatschappij',
-    sync: 'Synchroniseren', syncBezig: 'Bezig...',
-    verbindingOk: 'Verbonden', verbindingFout: 'Geen verbinding', verbindingBezig: 'Controleren...',
-    tabs: { overzicht: 'Overzicht', facturen: 'Facturen', transacties: 'Transacties', btw: 'BTW', agenda: 'Agenda' },
-    inkomend: 'Inkomend', uitgaand: 'Uitgaand', saldo: 'Saldo', btwKwartaal: 'BTW dit kwartaal',
-    openstaand: 'Openstaand', verkoop: 'Verkoopfacturen', inkoop: 'Inkoopfacturen',
-    dezeMaand: 'Deze maand', gekoppeld: 'Gekoppeld', ongekoppeld: 'Ongekoppeld', aantal: 'Transacties',
-    teBetalen: 'Te betalen', tarief21: 'Hoog tarief 21%', tarief9: 'Laag tarief 9%',
-    betaalmomenten: 'Betaalmomenten', deadlines: 'Deadlines', lonen: 'Lonen',
-    cashflow: 'Cashflow per maand', factuurTabel: 'Alle facturen', txTabel: 'Alle transacties',
-    btwKwartaalTabel: 'BTW per kwartaal', agendaTabel: 'Tijdlijn',
-    kDatum: 'Datum', kTegenpartij: 'Tegenpartij', kOmschrijving: 'Omschrijving', kBedrag: 'Bedrag',
-    kBron: 'Bron', bekijk: 'Openen', ongekoppeldTag: 'ongekoppeld',
-    sweepKnop: 'Historische import uit Gmail', sweepBezig: 'Bezig met importeren...',
-    voorgesteld: 'Voorgestelde factuur', geenFactuur: 'Geen factuur gekoppeld',
-    bevestigen: 'Bevestigen', ontkoppelen: 'Ontkoppelen', anderBestand: 'Ander bestand',
-    koppelBestand: 'Bestand koppelen', bedragKlopt: 'bedrag komt overeen', bedragWijkt: 'bedrag wijkt af',
-    bevestigdTag: 'bevestigd', bezigTag: 'Bezig...', bunqReset: 'Bunq opnieuw koppelen',
-    leegTx: 'Nog geen transacties. Klik op Synchroniseren.',
-    leegFac: 'Nog geen facturen. Voeg er een toe of koppel je e-mail en Drive.',
-    leegBtw: 'BTW verschijnt zodra er facturen zijn.',
-    leegAgenda: 'Nog geen geplande momenten.',
+    tabs: { overzicht: 'Overzicht', facturen: 'Facturen', transacties: 'Transacties', btw: 'BTW', lonen: 'Lonen', projecten: 'Projecten' },
+    balans: 'Balans', ongekoppeldFac: 'Ongekoppelde facturen', openBtw: 'Openstaande BTW',
+    inkomsten: 'Inkomsten', uitgaven: 'Uitgaven', overig: 'Overig',
+    ongekoppeld: 'Ongekoppeld', openstaand: 'Openstaand', upload: 'Factuur uploaden',
+    kBestand: 'Bestand', kDatum: 'Datum', kNaam: 'Naam', kBedrag: 'Bedrag', kBtw: 'BTW', kKoppel: 'Koppeling', kDownload: 'Download',
+    kStatus: 'Status', kKwartaal: 'Kwartaal', kPersoon: 'Persoon', kSalaris: 'Salaris', kLoonbelasting: 'Loonheffing', kBetaald: 'Betaald',
+    kProject: 'Project', kPerMaand: 'Per maand', kEinde: 'Einde',
+    aangiftesOpen: 'Openstaande aangiftes', bedragOpen: 'Bedrag openstaand',
+    betaald: 'betaald', open: 'open', actief: 'actief', beeindigd: 'beeindigd',
+    lonenTitel: 'Maandelijkse lonen', abosTitel: 'Subscriptions & services',
+    projActief: 'Actieve projecten', projMaand: 'Verwacht per maand',
+    leegTx: 'Nog geen transacties.', leegFac: 'Nog geen facturen.', leegBtw: 'Nog geen BTW-gegevens.', leegAbo: 'Nog geen terugkerende diensten herkend.',
+    statusTitel: 'Verbindingen', bank: 'Bank', verversen: 'Verversen', transactiesLbl: 'transacties', facturenLbl: 'facturen',
+    verbonden: 'Verbonden', nietVerbonden: 'Niet verbonden', bezig: 'Bezig...',
   },
   en: {
-    titel: 'Bookkeeping',
     geconsolideerd: 'Consolidated', holding: 'Holding', werk: 'Operating company',
-    sync: 'Sync', syncBezig: 'Working...',
-    verbindingOk: 'Connected', verbindingFout: 'No connection', verbindingBezig: 'Checking...',
-    tabs: { overzicht: 'Overview', facturen: 'Invoices', transacties: 'Transactions', btw: 'VAT', agenda: 'Agenda' },
-    inkomend: 'Incoming', uitgaand: 'Outgoing', saldo: 'Balance', btwKwartaal: 'VAT this quarter',
-    openstaand: 'Outstanding', verkoop: 'Sales invoices', inkoop: 'Purchase invoices',
-    dezeMaand: 'This month', gekoppeld: 'Matched', ongekoppeld: 'Unmatched', aantal: 'Transactions',
-    teBetalen: 'Payable', tarief21: 'High rate 21%', tarief9: 'Low rate 9%',
-    betaalmomenten: 'Payments', deadlines: 'Deadlines', lonen: 'Payroll',
-    cashflow: 'Cashflow per month', factuurTabel: 'All invoices', txTabel: 'All transactions',
-    btwKwartaalTabel: 'VAT per quarter', agendaTabel: 'Timeline',
-    kDatum: 'Date', kTegenpartij: 'Counterparty', kOmschrijving: 'Description', kBedrag: 'Amount',
-    kBron: 'Source', bekijk: 'Open', ongekoppeldTag: 'unmatched',
-    sweepKnop: 'Historic import from Gmail', sweepBezig: 'Importing...',
-    voorgesteld: 'Suggested invoice', geenFactuur: 'No invoice linked',
-    bevestigen: 'Confirm', ontkoppelen: 'Unlink', anderBestand: 'Other file',
-    koppelBestand: 'Link file', bedragKlopt: 'amount matches', bedragWijkt: 'amount differs',
-    bevestigdTag: 'confirmed', bezigTag: 'Working...', bunqReset: 'Reconnect Bunq',
-    leegTx: 'No transactions yet. Click Sync.',
-    leegFac: 'No invoices yet. Add one or connect your email and Drive.',
-    leegBtw: 'VAT appears once invoices exist.',
-    leegAgenda: 'Nothing scheduled yet.',
+    tabs: { overzicht: 'Overview', facturen: 'Invoices', transacties: 'Transactions', btw: 'VAT', lonen: 'Payroll', projecten: 'Projects' },
+    balans: 'Balance', ongekoppeldFac: 'Unlinked invoices', openBtw: 'Open VAT',
+    inkomsten: 'Income', uitgaven: 'Expenses', overig: 'Other',
+    ongekoppeld: 'Unlinked', openstaand: 'Outstanding', upload: 'Upload invoice',
+    kBestand: 'File', kDatum: 'Date', kNaam: 'Name', kBedrag: 'Amount', kBtw: 'VAT', kKoppel: 'Link', kDownload: 'Download',
+    kStatus: 'Status', kKwartaal: 'Quarter', kPersoon: 'Person', kSalaris: 'Salary', kLoonbelasting: 'Payroll tax', kBetaald: 'Paid',
+    kProject: 'Project', kPerMaand: 'Monthly', kEinde: 'Ended',
+    aangiftesOpen: 'Open returns', bedragOpen: 'Amount open',
+    betaald: 'paid', open: 'open', actief: 'active', beeindigd: 'ended',
+    lonenTitel: 'Monthly payroll', abosTitel: 'Subscriptions & services',
+    projActief: 'Active projects', projMaand: 'Expected monthly',
+    leegTx: 'No transactions yet.', leegFac: 'No invoices yet.', leegBtw: 'No VAT data yet.', leegAbo: 'No recurring services detected yet.',
+    statusTitel: 'Connections', bank: 'Bank', verversen: 'Refresh', transactiesLbl: 'transactions', facturenLbl: 'invoices',
+    verbonden: 'Connected', nietVerbonden: 'Not connected', bezig: 'Working...',
   },
 };
 const taal = (navigator.language || 'nl').toLowerCase().startsWith('en') ? 'en' : 'nl';
 const t = T[taal];
 
 const eur = (n) => new Intl.NumberFormat(taal === 'en' ? 'en-US' : 'nl-NL', { style: 'currency', currency: 'EUR' }).format(Number(n || 0));
-const maandKort = (ym) => {
-  const [y, m] = ym.split('-');
-  const namen = taal === 'en'
-    ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-    : ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
-  return namen[Number(m) - 1] || ym;
-};
+const MAANDEN = taal === 'en'
+  ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  : ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
 
-// Hero illustraties per tab. Altijd laadbaar, afgestemd op de huisstijl.
-function HeroArt({ soort }) {
-  const grad = (
-    <defs>
-      <linearGradient id={`g-${soort}`} x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stopColor="#163A2E" />
-        <stop offset="1" stopColor="#0C231C" />
-      </linearGradient>
-    </defs>
-  );
-  const A = '#B4823C', F = 'rgba(255,255,255,0.12)', L = 'rgba(255,255,255,0.28)';
-  const shapes = {
-    overzicht: (
-      <g>
-        <rect x="60" y="120" width="30" height="70" rx="5" fill={F} />
-        <rect x="105" y="90" width="30" height="100" rx="5" fill={L} />
-        <rect x="150" y="60" width="30" height="130" rx="5" fill={A} />
-        <circle cx="245" cy="80" r="34" fill="none" stroke={A} strokeWidth="8" />
-        <path d="M245 80 L245 52 A28 28 0 0 1 270 92 Z" fill={A} opacity="0.5" />
-      </g>
-    ),
-    facturen: (
-      <g>
-        <rect x="90" y="46" width="150" height="150" rx="10" fill="#FCFAF4" opacity="0.95" />
-        <rect x="110" y="70" width="80" height="9" rx="4" fill="#163A2E" />
-        <rect x="110" y="92" width="110" height="7" rx="3" fill="rgba(22,58,46,0.35)" />
-        <rect x="110" y="108" width="110" height="7" rx="3" fill="rgba(22,58,46,0.35)" />
-        <rect x="110" y="124" width="70" height="7" rx="3" fill="rgba(22,58,46,0.35)" />
-        <rect x="110" y="156" width="100" height="12" rx="4" fill={A} />
-      </g>
-    ),
-    transacties: (
-      <g>
-        <rect x="80" y="70" width="170" height="104" rx="14" fill={L} />
-        <rect x="80" y="96" width="170" height="16" fill="rgba(0,0,0,0.25)" />
-        <rect x="98" y="140" width="60" height="10" rx="5" fill={A} />
-        <path d="M150 40 h60 M195 26 l18 14 -18 14" fill="none" stroke={A} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M180 210 h-60 M135 196 l-18 14 18 14" fill="none" stroke={F} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
-      </g>
-    ),
-    btw: (
-      <g>
-        <circle cx="165" cy="118" r="66" fill="none" stroke={L} strokeWidth="10" />
-        <circle cx="140" cy="93" r="13" fill={A} />
-        <circle cx="190" cy="143" r="13" fill={A} />
-        <path d="M198 78 L132 158" stroke="#FCFAF4" strokeWidth="9" strokeLinecap="round" />
-      </g>
-    ),
-    agenda: (
-      <g>
-        <rect x="86" y="60" width="158" height="132" rx="12" fill="#FCFAF4" opacity="0.95" />
-        <rect x="86" y="60" width="158" height="30" rx="12" fill={A} />
-        <rect x="118" y="46" width="10" height="26" rx="5" fill="#0C231C" />
-        <rect x="202" y="46" width="10" height="26" rx="5" fill="#0C231C" />
-        <g fill="rgba(22,58,46,0.4)">
-          <rect x="104" y="104" width="20" height="16" rx="3" /><rect x="136" y="104" width="20" height="16" rx="3" />
-          <rect x="168" y="104" width="20" height="16" rx="3" /><rect x="200" y="104" width="20" height="16" rx="3" />
-          <rect x="104" y="132" width="20" height="16" rx="3" /><rect x="136" y="132" width="20" height="16" rx="3" fill="#B4823C" />
-          <rect x="168" y="132" width="20" height="16" rx="3" /><rect x="200" y="132" width="20" height="16" rx="3" />
-        </g>
-      </g>
-    ),
-  };
-  return (
-    <svg className="hero-art" viewBox="0 0 330 240" preserveAspectRatio="xMidYMid slice">
-      {grad}
-      <rect width="330" height="240" fill={`url(#g-${soort})`} />
-      {shapes[soort]}
-    </svg>
-  );
-}
-
-function Hero({ soort, eyebrow, big }) {
-  return (
-    <div className="card hero">
-      <HeroArt soort={soort} />
-      <div className="hero-copy">
-        <div className="eyebrow">{eyebrow}</div>
-        <div className="big mono">{big}</div>
-      </div>
-    </div>
-  );
-}
-
-function Metric({ id, icon, label, value, tint }) {
-  return (
-    <div className="card span2" id={id}>
-      <div className="metric-icon" style={tint ? { background: tint.bg, color: tint.fg } : undefined}>{icon}</div>
-      <div className="metric-label">{label}</div>
-      <div className="metric-value mono" style={tint ? { color: tint.fg } : undefined}>{value}</div>
-    </div>
-  );
-}
-
-function Fold({ id, titel, children, openDefault }) {
-  const [open, setOpen] = useState(!!openDefault);
-  return (
-    <div className={`fold${open ? ' open' : ''}`} id={id}>
-      <div className="fold-head" onClick={() => setOpen((o) => !o)}>
-        <span>{titel}</span>
-        <ChevronDown className="chev" size={18} />
-      </div>
-      {open && <div className="fold-body">{children}</div>}
-    </div>
-  );
-}
-
-function CashflowChart({ maanden }) {
-  if (!maanden.length) return <div className="empty">{t.leegTx}</div>;
-  const max = Math.max(1, ...maanden.map((m) => Math.max(m.in, m.uit)));
-  const H = 150, bw = 14, gap = 10, groep = bw * 2 + 6, stap = groep + gap;
-  const W = maanden.length * stap + 20;
-  return (
-    <svg width="100%" viewBox={`0 0 ${W} ${H + 28}`} style={{ display: 'block' }}>
-      {maanden.map((m, i) => {
-        const x = 14 + i * stap;
-        const hi = (m.in / max) * H, hu = (m.uit / max) * H;
-        return (
-          <g key={m.ym}>
-            <rect x={x} y={H - hi} width={bw} height={hi} rx="3" fill="#2E7D5B" />
-            <rect x={x + bw + 6} y={H - hu} width={bw} height={hu} rx="3" fill="#B4462E" />
-            <text x={x + bw} y={H + 20} textAnchor="middle" fontSize="11" fill="#5E6B64" fontFamily="IBM Plex Mono">{maandKort(m.ym)}</text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-function TxTabel({ rows }) {
-  if (!rows.length) return <div className="empty">{t.leegTx}</div>;
-  return (
-    <table className="tx">
-      <thead>
-        <tr><th>{t.kDatum}</th><th>{t.kTegenpartij}</th><th>{t.kOmschrijving}</th><th style={{ textAlign: 'right' }}>{t.kBedrag}</th></tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.id}>
-            <td className="mono" style={{ whiteSpace: 'nowrap' }}>{r.datum}</td>
-            <td>{r.tegenpartij || ''}</td>
-            <td style={{ color: '#5E6B64' }}>{r.omschrijving || ''}</td>
-            <td className={`mono ${Number(r.bedrag) < 0 ? 'amt-neg' : 'amt-pos'}`} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{eur(r.bedrag)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function useTransacties(entiteit, nonce) {
-  const [rows, setRows] = useState([]);
-  useEffect(() => {
-    let leeft = true;
-    fetch(`/api/transacties?type=${entiteit}`)
-      .then((r) => r.json())
-      .then((d) => { if (leeft) setRows(d.transacties || []); })
-      .catch(() => { if (leeft) setRows([]); });
-    return () => { leeft = false; };
-  }, [entiteit, nonce]);
-  return rows;
-}
-
-function useFacturen(entiteit, nonce) {
-  const [rows, setRows] = useState([]);
-  useEffect(() => {
-    let leeft = true;
-    fetch(`/api/facturen?type=${entiteit}`)
-      .then((r) => r.json())
-      .then((d) => { if (leeft) setRows(d.facturen || []); })
-      .catch(() => { if (leeft) setRows([]); });
-    return () => { leeft = false; };
-  }, [entiteit, nonce]);
-  return rows;
-}
-
-function FacturenTabel({ rows }) {
-  if (!rows.length) return <div className="empty">{t.leegFac}</div>;
-  return (
-    <table className="tx">
-      <thead>
-        <tr><th>{t.kDatum}</th><th>{t.kTegenpartij}</th><th>{t.kBron}</th><th style={{ textAlign: 'right' }}>{t.kBedrag}</th></tr>
-      </thead>
-      <tbody>
-        {rows.map((f) => (
-          <tr key={f.id}>
-            <td className="mono" style={{ whiteSpace: 'nowrap' }}>{f.bron_datum || f.factuurdatum || ''}</td>
-            <td>
-              {f.link ? <a href={f.link} target="_blank" rel="noreferrer" style={{ color: 'var(--ink)' }}>{f.tegenpartij || f.bestandsnaam || t.bekijk}</a> : (f.tegenpartij || f.bestandsnaam || '')}
-              {f.totaal == null && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--accent)' }}>{t.ongekoppeldTag}</span>}
-            </td>
-            <td style={{ color: '#5E6B64', textTransform: 'capitalize' }}>{f.bron || ''}</td>
-            <td className="mono" style={{ textAlign: 'right', whiteSpace: 'nowrap', color: f.totaal == null ? '#9aa39d' : undefined }}>
-              {f.totaal == null ? '·' : eur(f.totaal)}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function afgeleid(rows) {
-  let inn = 0, uit = 0;
-  const perMaand = {};
-  const nu = new Date();
-  const dezeYm = `${nu.getFullYear()}-${String(nu.getMonth() + 1).padStart(2, '0')}`;
-  let dezeMaand = 0;
-  for (const r of rows) {
-    const b = Number(r.bedrag) || 0;
-    if (b >= 0) inn += b; else uit += -b;
-    const ym = (r.datum || '').slice(0, 7);
-    if (!perMaand[ym]) perMaand[ym] = { ym, in: 0, uit: 0 };
-    if (b >= 0) perMaand[ym].in += b; else perMaand[ym].uit += -b;
-    if (ym === dezeYm) dezeMaand += 1;
-  }
-  const maanden = Object.values(perMaand).sort((a, b) => a.ym.localeCompare(b.ym)).slice(-6);
-  return { inn, uit, net: inn - uit, count: rows.length, dezeMaand, maanden };
-}
-
-function Overzicht({ rows }) {
-  const d = afgeleid(rows);
-  return (
-    <>
-      <div className="bento">
-        <Hero soort="overzicht" eyebrow={t.saldo} big={eur(d.net)} />
-        <Metric id="ov-in" icon={<TrendingUp size={20} />} label={t.inkomend} value={eur(d.inn)} tint={{ bg: 'rgba(46,125,91,0.12)', fg: '#2E7D5B' }} />
-        <Metric id="ov-uit" icon={<TrendingDown size={20} />} label={t.uitgaand} value={eur(d.uit)} tint={{ bg: 'rgba(180,70,46,0.12)', fg: '#B4462E' }} />
-        <Metric id="ov-btw" icon={<Percent size={20} />} label={t.btwKwartaal} value={eur(0)} />
-        <Metric id="ov-wallet" icon={<Wallet size={20} />} label={t.aantal} value={d.count} />
-      </div>
-      <div className="folds">
-        <Fold id="ov-cashflow" titel={t.cashflow} openDefault><CashflowChart maanden={d.maanden} /></Fold>
-        <Fold id="ov-recent" titel={t.txTabel}><TxTabel rows={rows.slice(0, 12)} /></Fold>
-      </div>
-    </>
-  );
-}
-
-function Facturen({ entiteit, nonce }) {
-  const [lokaal, setLokaal] = useState(0);
-  const [sweepBezig, setSweepBezig] = useState(false);
-  const [sweepN, setSweepN] = useState(0);
-  const [sweepMsg, setSweepMsg] = useState(null);
-  const rows = useFacturen(entiteit, `${nonce}-${lokaal}`);
-  const open = rows.filter((f) => f.status === 'open').length;
-  const inkoop = rows.filter((f) => f.richting === 'inkoop').length;
-  const verkoop = rows.filter((f) => f.richting === 'verkoop').length;
-
-  const sweep = async () => {
-    setSweepBezig(true); setSweepN(0); setSweepMsg(null);
-    let meer = true, veilig = 0, totaal = 0, laatste = null;
-    while (meer && veilig < 80) {
-      const r = await postJson('/api/ingest?mode=sweep', {});
-      laatste = r;
-      if (!r || !r.ok) { meer = false; break; }
-      totaal += r.nieuw || 0;
-      setSweepN(totaal);
-      meer = !!r.meer;
-      veilig += 1;
-      setLokaal((n) => n + 1);
-    }
-    setSweepBezig(false); setLokaal((n) => n + 1);
-    if (!laatste) setSweepMsg({ ok: false, text: 'Geen antwoord van de server.' });
-    else if (!laatste.ok) setSweepMsg({ ok: false, text: (laatste.fouten && laatste.fouten.length ? laatste.fouten.join('  |  ') : laatste.reden) || 'Onbekende fout' });
-    else setSweepMsg({ ok: true, text: `Klaar: ${totaal} nieuw` });
-  };
-
-  return (
-    <>
-      <div className="bento">
-        <Hero soort="facturen" eyebrow={t.tabs.facturen} big={rows.length} />
-        <Metric id="fa-open" icon={<FileText size={20} />} label={t.openstaand} value={open} />
-        <Metric id="fa-verkoop" icon={<TrendingUp size={20} />} label={t.verkoop} value={verkoop} />
-        <Metric id="fa-inkoop" icon={<TrendingDown size={20} />} label={t.inkoop} value={inkoop} />
-        <Metric id="fa-tot" icon={<Banknote size={20} />} label={t.tabs.facturen} value={rows.length} />
-      </div>
-      <div className="folds">
-        <Fold id="fa-tabel" titel={t.factuurTabel} openDefault><FacturenTabel rows={rows} /></Fold>
-      </div>
-      <button className="ghost" onClick={sweep} disabled={sweepBezig}>
-        {sweepBezig ? `${t.sweepBezig} ${sweepN}` : t.sweepKnop}
-      </button>
-      {sweepMsg && <div className={`syncmsg${sweepMsg.ok ? '' : ' err'}`} style={{ marginTop: 10 }}>{sweepMsg.text}</div>}
-    </>
-  );
-}
-
+async function getJson(url) { try { const r = await fetch(url); return await r.json(); } catch { return null; } }
 async function postJson(url, body) {
   try {
-    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
     return await r.json();
   } catch { return null; }
 }
@@ -374,227 +66,492 @@ function fileToBase64(file) {
   });
 }
 
-function TransactieRij({ tx, reload }) {
-  const [open, setOpen] = useState(false);
-  const [bezig, setBezig] = useState(false);
-  const fileRef = useRef(null);
-  const k = tx.koppeling;
-  const bedrag = Number(tx.bedrag);
-  const match = k?.factuur?.totaal != null && Math.abs(k.factuur.totaal - Math.abs(bedrag)) < 0.02;
+// Vaste configuratie.
+const LONEN = [
+  { naam: 'Sten', salaris: 4494, loonbelasting: 1429 },
+  { naam: 'Nada', salaris: 900, loonbelasting: 0 },
+  { naam: 'Mayte', salaris: 150, loonbelasting: 0 },
+];
+const PROJECTEN = [
+  { naam: 'Stichting De Buurt', bedrag: 450, actief: true },
+  { naam: 'Plant-E', bedrag: 150, actief: true },
+  { naam: 'FC Klap', bedrag: 2000, actief: true },
+  { naam: 'KvK', bedrag: 10000, actief: false, einde: '2026-04' },
+  { naam: 'Padel2025', bedrag: 450, actief: false, einde: '2026-01' },
+];
 
-  const doe = (p) => { setBezig(true); Promise.resolve(p).finally(() => { setBezig(false); reload(); }); };
-  const bevestig = () => doe(postJson('/api/koppeling', { transactie_id: tx.id, actie: 'bevestig' }));
-  const ontkoppel = () => doe(postJson('/api/koppeling', { transactie_id: tx.id, actie: 'verwijder' }));
-  const kies = (e) => { e.stopPropagation(); fileRef.current?.click(); };
-  const upload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBezig(true);
-    const data = await fileToBase64(file);
-    await postJson('/api/factuur-upload', { transactie_id: tx.id, bestandsnaam: file.name, data_base64: data });
-    setBezig(false); reload();
+function Metric({ id, icon, label, value, tint }) {
+  return (
+    <div className="card metric" id={id}>
+      <div className="metric-icon" style={tint ? { background: tint.bg, color: tint.fg } : undefined}>{icon}</div>
+      <div className="metric-label">{label}</div>
+      <div className="metric-value mono" style={tint ? { color: tint.fg } : undefined}>{value}</div>
+    </div>
+  );
+}
+
+function Fold({ id, titel, children, openDefault, extra }) {
+  const [open, setOpen] = useState(!!openDefault);
+  return (
+    <div className={`fold${open ? ' open' : ''}`} id={id}>
+      <div className="fold-head" onClick={() => setOpen((o) => !o)}>
+        <span>{titel}</span>
+        <span className="fold-extra" onClick={(e) => e.stopPropagation()}>{extra}</span>
+        <ChevronDown className="chev" size={18} />
+      </div>
+      {open && <div className="fold-body">{children}</div>}
+    </div>
+  );
+}
+
+// Donut van top 4 bronnen plus overig.
+const DONUT_KLEUREN = ['#B4823C', '#2E7D5B', '#3A6B8A', '#7A5C8E', '#9aa39d'];
+function Donut({ titel, data }) {
+  const totaal = data.reduce((a, d) => a + d.value, 0);
+  if (!totaal) return null;
+  let hoek = -90;
+  const segs = data.map((d, i) => {
+    const frac = d.value / totaal;
+    const start = hoek, sweep = frac * 360;
+    hoek += sweep;
+    const grote = sweep > 180 ? 1 : 0;
+    const r = 44, cx = 60, cy = 60;
+    const rad = (a) => [cx + r * Math.cos((a * Math.PI) / 180), cy + r * Math.sin((a * Math.PI) / 180)];
+    const [x1, y1] = rad(start), [x2, y2] = rad(start + sweep - 0.5);
+    return { d: `M ${x1} ${y1} A ${r} ${r} 0 ${grote} 1 ${x2} ${y2}`, kleur: DONUT_KLEUREN[i % DONUT_KLEUREN.length], label: d.label, value: d.value };
+  });
+  return (
+    <div className="donutwrap">
+      <div className="donut-title">{titel}</div>
+      <svg viewBox="0 0 120 120" width="120" height="120">
+        {segs.map((s, i) => <path key={i} d={s.d} fill="none" stroke={s.kleur} strokeWidth="14" strokeLinecap="butt" />)}
+        <text x="60" y="64" textAnchor="middle" fontSize="12" fill="#16241F" fontFamily="IBM Plex Mono">{eur(totaal)}</text>
+      </svg>
+      <div className="legend">
+        {segs.map((s, i) => (
+          <div key={i} className="legend-row">
+            <span className="legend-dot" style={{ background: s.kleur }} />
+            <span className="legend-label">{s.label}</span>
+            <span className="mono legend-val">{eur(s.value)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function topBronnen(rows, richting) {
+  const per = {};
+  for (const r of rows) {
+    const b = Number(r.bedrag) || 0;
+    if (richting === 'in' && b <= 0) continue;
+    if (richting === 'uit' && b >= 0) continue;
+    const naam = r.tegenpartij || '?';
+    per[naam] = (per[naam] || 0) + Math.abs(b);
+  }
+  const sorted = Object.entries(per).sort((a, b) => b[1] - a[1]);
+  const top = sorted.slice(0, 4).map(([label, value]) => ({ label, value }));
+  const rest = sorted.slice(4).reduce((a, [, v]) => a + v, 0);
+  if (rest > 0) top.push({ label: t.overig, value: rest });
+  return top;
+}
+
+// Status indicator met dropdown.
+function StatusHub({ onRefresh }) {
+  const [open, setOpen] = useState(false);
+  const [st, setSt] = useState(null);
+  const [bezig, setBezig] = useState(null);
+  const laad = useCallback(async () => setSt(await getJson('/api/status')), []);
+  useEffect(() => { laad(); }, [laad]);
+
+  const kanalen = st ? [st.bank?.ok, st.gmail?.ok, st.drive?.ok] : [];
+  const aantalOk = kanalen.filter(Boolean).length;
+  const kleur = !st ? '#9aa39d' : aantalOk === 3 ? '#2E7D5B' : aantalOk >= 1 ? '#C98A2E' : '#B4462E';
+
+  const ververs = async (kanaal) => {
+    setBezig(kanaal);
+    if (kanaal === 'bank') await postJson('/api/bunq-sync');
+    else await postJson('/api/ingest');
+    await postJson('/api/parse'); await postJson('/api/match');
+    setBezig(null); laad(); onRefresh();
   };
 
-  const stip = k ? (k.bevestigd ? '#2E7D5B' : '#B4823C') : 'transparent';
+  const Rij = ({ naam, ok, detail, kanaal }) => (
+    <div className="st-row">
+      {ok ? <CheckCircle2 size={15} color="#2E7D5B" /> : <XCircle size={15} color="#B4462E" />}
+      <div className="st-info">
+        <div className="st-naam">{naam}</div>
+        <div className="st-detail">{detail || (ok ? t.verbonden : t.nietVerbonden)}</div>
+      </div>
+      <button className="mini ghost2" onClick={() => ververs(kanaal)} disabled={!!bezig}>
+        <RefreshCw size={12} className={bezig === kanaal ? 'spin' : ''} /> {t.verversen}
+      </button>
+    </div>
+  );
 
   return (
-    <div className={`txitem${open ? ' open' : ''}`}>
-      <div className="txhead" onClick={() => setOpen((o) => !o)}>
-        <span className="txdot" style={{ background: stip }} />
-        <span className="mono txdate">{tx.datum}</span>
-        <span className="txname">{tx.tegenpartij || ''}</span>
-        <span className={`mono ${bedrag < 0 ? 'amt-neg' : 'amt-pos'}`}>{eur(bedrag)}</span>
-        <ChevronDown className="chev" size={16} />
-      </div>
-      {open && (
-        <div className="txbody">
-          {tx.omschrijving && <div className="txmeta">{tx.omschrijving}</div>}
-          <div className="txfac-label">{t.voorgesteld}</div>
-          {k && k.factuur ? (
-            <div className="txfac-row">
-              {k.factuur.link
-                ? <a href={k.factuur.link} target="_blank" rel="noreferrer">{k.factuur.bestandsnaam || k.factuur.tegenpartij || t.bekijk}</a>
-                : <span>{k.factuur.bestandsnaam || k.factuur.tegenpartij || ''}</span>}
-              <span className="mono">{k.factuur.totaal != null ? eur(k.factuur.totaal) : '·'}</span>
-              {k.factuur.totaal != null && (
-                <span className={match ? 'match-ok' : 'match-warn'}>{match ? t.bedragKlopt : t.bedragWijkt}</span>
-              )}
-              {k.bevestigd
-                ? <span className="chip">{t.bevestigdTag}</span>
-                : <button className="mini" onClick={bevestig} disabled={bezig}>{t.bevestigen}</button>}
-            </div>
-          ) : <div className="txfac-empty">{t.geenFactuur}</div>}
-          <div className="txfac-actions">
-            <button className="ghost small" onClick={kies} disabled={bezig}>+ {t.anderBestand}</button>
-            {k && <button className="ghost small" onClick={ontkoppel} disabled={bezig}>{t.ontkoppelen}</button>}
-            {bezig && <span className="txbezig">{t.bezigTag}</span>}
-            <input ref={fileRef} type="file" accept="application/pdf" style={{ display: 'none' }} onChange={upload} />
-          </div>
+    <div className="statushub">
+      <button className="st-indicator" onClick={() => { setOpen((o) => !o); if (!open) laad(); }} aria-label={t.statusTitel}>
+        <span className="dot" style={{ background: kleur }} />
+      </button>
+      {open && st && (
+        <div className="st-card">
+          <div className="st-titel">{t.statusTitel}</div>
+          <Rij naam={t.bank} ok={!!st.bank?.ok} kanaal="bank"
+            detail={st.bank?.ok ? `${(st.bank.rekeningen || []).map((r) => r.iban).join(', ')} (${st.bank.transacties} ${t.transactiesLbl})` : null} />
+          <Rij naam="Gmail" ok={!!st.gmail?.ok} kanaal="gmail"
+            detail={st.gmail?.ok ? `${st.gmail.facturen} ${t.facturenLbl}` : st.gmail?.reden} />
+          <Rij naam="Drive" ok={!!st.drive?.ok} kanaal="drive" detail={st.drive?.reden} />
         </div>
       )}
     </div>
   );
 }
 
-function TransactieLijst({ rows, reload }) {
-  if (!rows.length) return <div className="empty">{t.leegTx}</div>;
-  return <div className="txlist">{rows.map((r) => <TransactieRij key={r.id} tx={r} reload={reload} />)}</div>;
+// Data hooks.
+function useTransacties(entiteit, nonce) {
+  const [rows, setRows] = useState([]);
+  useEffect(() => {
+    let leeft = true;
+    getJson(`/api/transacties?type=${entiteit}`).then((d) => { if (leeft) setRows(d?.transacties || []); });
+    return () => { leeft = false; };
+  }, [entiteit, nonce]);
+  return rows;
+}
+function useFacturen(entiteit, nonce) {
+  const [rows, setRows] = useState([]);
+  useEffect(() => {
+    let leeft = true;
+    getJson(`/api/facturen?type=${entiteit}`).then((d) => { if (leeft) setRows(d?.facturen || []); });
+    return () => { leeft = false; };
+  }, [entiteit, nonce]);
+  return rows;
 }
 
-function Transacties({ rows, reload }) {
-  const d = afgeleid(rows);
-  const gekoppeld = rows.filter((r) => r.koppeling && r.koppeling.bevestigd).length;
-  const [resetBezig, setResetBezig] = useState(false);
-  const bunqReset = async () => {
-    setResetBezig(true);
-    await postJson('/api/bunq-sync?reset=1', {});
-    setResetBezig(false); reload();
-  };
+function btwPerKwartaal(txs, facs) {
+  // BTW op basis van gekoppelde transacties: transactiebedrag plus btw-gegevens uit de factuur.
+  const facById = {}; for (const f of facs) facById[f.id] = f;
+  const per = {};
+  for (const tx of txs) {
+    const fId = tx.koppeling?.factuur?.id;
+    const f = fId ? facById[fId] : null;
+    if (!f || f.btw_bedrag == null) continue;
+    const d = new Date(tx.datum);
+    const kw = `${d.getFullYear()} Q${Math.floor(d.getMonth() / 3) + 1}`;
+    if (!per[kw]) per[kw] = { kw, verkoop: 0, inkoop: 0 };
+    if (Number(tx.bedrag) >= 0) per[kw].verkoop += Number(f.btw_bedrag);
+    else per[kw].inkoop += Number(f.btw_bedrag);
+  }
+  // Betaald als er een Belastingdienst-afschrijving in of na het kwartaal is.
+  const belasting = txs.filter((x) => /belastingdienst/i.test(x.tegenpartij || '') && Number(x.bedrag) < 0);
+  return Object.values(per).sort((a, b) => a.kw.localeCompare(b.kw)).map((k) => {
+    const saldo = k.verkoop - k.inkoop;
+    const betaald = belasting.some((b) => Math.abs(Math.abs(Number(b.bedrag)) - saldo) < Math.max(1, saldo * 0.02));
+    return { ...k, saldo, betaald };
+  });
+}
+
+function Overzicht({ txs, facs }) {
+  const balans = txs.reduce((a, r) => a + Number(r.bedrag || 0), 0);
+  const ongekoppeld = facs.filter((f) => !f.koppeling).length;
+  const kwartalen = btwPerKwartaal(txs, facs);
+  const openBtw = kwartalen.filter((k) => !k.betaald && k.saldo > 0).reduce((a, k) => a + k.saldo, 0);
   return (
     <>
       <div className="bento">
-        <Hero soort="transacties" eyebrow={t.tabs.transacties} big={d.count} />
-        <Metric id="tx-maand" icon={<Calendar size={20} />} label={t.dezeMaand} value={d.dezeMaand} />
-        <Metric id="tx-gekoppeld" icon={<LinkIcon size={20} />} label={t.gekoppeld} value={gekoppeld} />
-        <Metric id="tx-ongekoppeld" icon={<Unlink size={20} />} label={t.ongekoppeld} value={d.count - gekoppeld} />
-        <Metric id="tx-in" icon={<TrendingUp size={20} />} label={t.inkomend} value={eur(d.inn)} tint={{ bg: 'rgba(46,125,91,0.12)', fg: '#2E7D5B' }} />
+        <Metric id="ov-balans" icon={<Wallet size={20} />} label={t.balans} value={eur(balans)} />
+        <Metric id="ov-onge" icon={<Unlink size={20} />} label={t.ongekoppeldFac} value={ongekoppeld} />
+        <Metric id="ov-btw" icon={<Landmark size={20} />} label={t.openBtw} value={eur(openBtw)} />
       </div>
-      <div className="folds">
-        <Fold id="tx-tabel" titel={t.txTabel} openDefault><TransactieLijst rows={rows} reload={reload} /></Fold>
+      <div className="card donuts" id="ov-donuts">
+        <Donut titel={t.inkomsten} data={topBronnen(txs, 'in')} />
+        <Donut titel={t.uitgaven} data={topBronnen(txs, 'uit')} />
       </div>
-      <button className="ghost" onClick={bunqReset} disabled={resetBezig}>
-        {resetBezig ? t.bezigTag : t.bunqReset}
-      </button>
     </>
   );
 }
 
-function Btw({ entiteit, nonce }) {
-  const rows = useFacturen(entiteit, nonce);
+function FacturenTab({ entiteit, nonce, reload, gaNaarTx }) {
+  const facs = useFacturen(entiteit, nonce);
+  const [bezig, setBezig] = useState(false);
+  const fileRef = useRef(null);
+  const ongekoppeld = facs.filter((f) => !f.koppeling);
+  const openstaand = facs.filter((f) => f.status === 'open');
+  const [filter, setFilter] = useState('ongekoppeld');
+  const lijst = filter === 'ongekoppeld' ? ongekoppeld : filter === 'open' ? openstaand : facs;
+
+  const upload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBezig(true);
+    const data = await fileToBase64(file);
+    await postJson('/api/factuur-upload', { bestandsnaam: file.name, data_base64: data });
+    await postJson('/api/match');
+    setBezig(false); reload();
+  };
+
+  return (
+    <>
+      <div className="bento">
+        <button className={`card metric klik${filter === 'ongekoppeld' ? ' sel' : ''}`} onClick={() => setFilter('ongekoppeld')}>
+          <div className="metric-icon"><Unlink size={20} /></div>
+          <div className="metric-label">{t.ongekoppeld}</div>
+          <div className="metric-value mono">{ongekoppeld.length}</div>
+        </button>
+        <button className={`card metric klik${filter === 'open' ? ' sel' : ''}`} onClick={() => setFilter('open')}>
+          <div className="metric-icon"><FileText size={20} /></div>
+          <div className="metric-label">{t.openstaand}</div>
+          <div className="metric-value mono">{openstaand.length}</div>
+        </button>
+        <button className="card metric klik" onClick={() => fileRef.current?.click()} disabled={bezig}>
+          <div className="metric-icon"><Upload size={20} /></div>
+          <div className="metric-label">{t.upload}</div>
+          <div className="metric-value">{bezig ? t.bezig : '+'}</div>
+          <input ref={fileRef} type="file" accept="application/pdf" style={{ display: 'none' }} onChange={upload} />
+        </button>
+      </div>
+      <div className="card tabelcard">
+        {lijst.length === 0 ? <div className="empty">{t.leegFac}</div> : (
+          <table className="tx compact">
+            <thead>
+              <tr><th>{t.kBestand}</th><th>{t.kDatum}</th><th>{t.kNaam}</th><th className="r">{t.kBedrag}</th><th className="c">{t.kKoppel}</th><th className="c">{t.kDownload}</th></tr>
+            </thead>
+            <tbody>
+              {lijst.map((f) => (
+                <tr key={f.id}>
+                  <td className="ell">{f.bestandsnaam || '·'}</td>
+                  <td className="mono nw">{f.factuurdatum || f.bron_datum || ''}</td>
+                  <td className="ell">{f.tegenpartij || ''}</td>
+                  <td className="mono r nw">{f.totaal != null ? eur(f.totaal) : '·'}</td>
+                  <td className="c">
+                    {f.koppeling
+                      ? <button className="icobtn ok" onClick={() => gaNaarTx(f.koppeling.transactie_id)} title="Transactie"><CircleDollarSign size={16} /></button>
+                      : <span className="icobtn dim"><CircleDollarSign size={16} /></span>}
+                  </td>
+                  <td className="c">{f.link ? <a className="icobtn" href={f.link} target="_blank" rel="noreferrer"><Download size={16} /></a> : '·'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+function TransactiesTab({ txs, focusId }) {
+  const inn = txs.filter((r) => Number(r.bedrag) > 0).reduce((a, r) => a + Number(r.bedrag), 0);
+  const uit = txs.filter((r) => Number(r.bedrag) < 0).reduce((a, r) => a + Math.abs(Number(r.bedrag)), 0);
+  const refs = useRef({});
+  useEffect(() => {
+    if (focusId && refs.current[focusId]) refs.current[focusId].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusId, txs]);
+  return (
+    <div className="card tabelcard">
+      <div className="tx-samenvatting">
+        <span className="mono in">{eur(inn)}</span>
+        <span className="mono uitv">{eur(uit)}</span>
+      </div>
+      {txs.length === 0 ? <div className="empty">{t.leegTx}</div> : (
+        <table className="tx compact">
+          <thead>
+            <tr><th>{t.kDatum}</th><th>{t.kNaam}</th><th className="r">{t.kBedrag}</th><th className="c">{t.kBtw}</th><th className="c">{t.kKoppel}</th><th className="c">{t.kDownload}</th></tr>
+          </thead>
+          <tbody>
+            {txs.map((r) => {
+              const f = r.koppeling?.factuur;
+              return (
+                <tr key={r.id} ref={(el) => { refs.current[r.id] = el; }} className={focusId === r.id ? 'focus' : ''}>
+                  <td className="mono nw">{r.datum}</td>
+                  <td className="ell">{r.tegenpartij || ''}</td>
+                  <td className={`mono r nw ${Number(r.bedrag) < 0 ? 'amt-neg' : 'amt-pos'}`}>{eur(r.bedrag)}</td>
+                  <td className="c mono">{f?.btw_tarief ? (f.btw_tarief === 'verlegd' ? 'v' : `${f.btw_tarief}%`) : '·'}</td>
+                  <td className="c"><span className={`icobtn ${r.koppeling ? 'ok' : 'fout'}`}><CircleDollarSign size={16} /></span></td>
+                  <td className="c">{f?.link ? <a className="icobtn" href={f.link} target="_blank" rel="noreferrer"><Download size={16} /></a> : '·'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function BtwTab({ txs, facs }) {
+  const kwartalen = btwPerKwartaal(txs, facs);
+  const open = kwartalen.filter((k) => !k.betaald && k.saldo > 0);
+  const openBedrag = open.reduce((a, k) => a + k.saldo, 0);
+  return (
+    <>
+      <div className="bento">
+        <Metric id="btw-open" icon={<Landmark size={20} />} label={t.aangiftesOpen} value={open.length} />
+        <Metric id="btw-bedrag" icon={<Percent size={20} />} label={t.bedragOpen} value={eur(openBedrag)} />
+      </div>
+      <div className="card tabelcard">
+        {kwartalen.length === 0 ? <div className="empty">{t.leegBtw}</div> : (
+          <table className="tx compact">
+            <thead><tr><th>{t.kKwartaal}</th><th className="r">{t.inkomsten}</th><th className="r">{t.uitgaven}</th><th className="r">{t.kBedrag}</th><th className="c">{t.kStatus}</th></tr></thead>
+            <tbody>
+              {kwartalen.map((k) => (
+                <tr key={k.kw}>
+                  <td className="mono nw">{k.kw}</td>
+                  <td className="mono r">{eur(k.verkoop)}</td>
+                  <td className="mono r">{eur(k.inkoop)}</td>
+                  <td className="mono r">{eur(k.saldo)}</td>
+                  <td className="c"><span className={`chip ${k.betaald ? 'groen' : 'amber'}`}>{k.betaald ? t.betaald : t.open}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+function LonenTab({ txs, reload }) {
   const nu = new Date();
-  const qStart = new Date(nu.getFullYear(), Math.floor(nu.getMonth() / 3) * 3, 1);
-  const qEind = new Date(qStart.getFullYear(), qStart.getMonth() + 3, 1);
-  const inKwartaal = (f) => {
-    const d = new Date(f.factuurdatum || f.bron_datum || 0);
-    return d >= qStart && d < qEind;
+  const maanden = [];
+  for (let m = 0; m <= nu.getMonth(); m++) maanden.push(m);
+
+  const betaaldCheck = (naam, bedrag, maand) => {
+    return txs.some((r) => {
+      const d = new Date(r.datum);
+      if (d.getFullYear() !== nu.getFullYear() || d.getMonth() !== maand) return false;
+      const b = Math.abs(Number(r.bedrag));
+      if (Number(r.bedrag) >= 0) return false;
+      const naamOk = (r.tegenpartij || '').toLowerCase().includes(naam.toLowerCase());
+      return naamOk && Math.abs(b - bedrag) <= bedrag * 0.1;
+    });
   };
-  const kwart = rows.filter((f) => f.totaal != null && inKwartaal(f));
-  const som = (pred) => kwart.filter(pred).reduce((a, f) => a + Number(f.btw_bedrag || 0), 0);
-  const verkoopBtw = som((f) => f.richting === 'verkoop');
-  const inkoopBtw = som((f) => f.richting === 'inkoop');
-  const teBetalen = verkoopBtw - inkoopBtw;
+
+  // Terugkerende diensten: zelfde tegenpartij in 2 of meer maanden, uitgaand,
+  // exclusief belastingen, lonen en rekening courant.
+  const abos = useMemo(() => {
+    const uitsluiten = /belastingdienst|salaris|loon|rekening.?courant/i;
+    const namen = LONEN.map((l) => l.naam.toLowerCase());
+    const per = {};
+    for (const r of txs) {
+      if (Number(r.bedrag) >= 0) continue;
+      const naam = (r.tegenpartij || '').trim();
+      if (!naam || uitsluiten.test(naam) || uitsluiten.test(r.omschrijving || '')) continue;
+      if (namen.some((n) => naam.toLowerCase().includes(n))) continue;
+      const ym = (r.datum || '').slice(0, 7);
+      if (!per[naam]) per[naam] = { naam, maanden: new Set(), totaal: 0, n: 0 };
+      per[naam].maanden.add(ym); per[naam].totaal += Math.abs(Number(r.bedrag)); per[naam].n += 1;
+    }
+    return Object.values(per).filter((p) => p.maanden.size >= 2)
+      .map((p) => ({ naam: p.naam, perMaand: p.totaal / p.maanden.size, maanden: p.maanden.size }))
+      .sort((a, b) => b.perMaand - a.perMaand).slice(0, 12);
+  }, [txs]);
 
   return (
     <>
-      <div className="bento">
-        <Hero soort="btw" eyebrow={t.tabs.btw} big={eur(teBetalen)} />
-        <Metric id="btw-tebetalen" icon={<Landmark size={20} />} label={t.teBetalen} value={eur(teBetalen)} />
-        <Metric id="btw-tarief" icon={<Percent size={20} />} label={t.tarief21} value={eur(som((f) => f.btw_tarief === '21'))} />
-        <Metric id="btw-laag" icon={<Percent size={20} />} label={t.tarief9} value={eur(som((f) => f.btw_tarief === '9'))} />
+      <div className="card tabelcard">
+        <div className="tabel-top">
+          <span className="tabel-titel">{t.lonenTitel}</span>
+          <button className="mini ghost2" onClick={reload}><RefreshCw size={12} /> {t.verversen}</button>
+        </div>
+        <table className="tx compact">
+          <thead><tr><th>{t.kDatum}</th><th>{t.kPersoon}</th><th className="r">{t.kSalaris}</th><th className="r">{t.kLoonbelasting}</th><th className="c">{t.kBetaald}</th></tr></thead>
+          <tbody>
+            {maanden.flatMap((m) => LONEN.map((l) => {
+              const betaald = betaaldCheck(l.naam, l.salaris, m);
+              return (
+                <tr key={`${m}-${l.naam}`}>
+                  <td className="mono nw">29 {MAANDEN[m]}</td>
+                  <td>{l.naam}</td>
+                  <td className="mono r">{eur(l.salaris)}</td>
+                  <td className="mono r">{l.loonbelasting ? eur(l.loonbelasting) : '·'}</td>
+                  <td className="c">{betaald ? <CheckCircle2 size={15} color="#2E7D5B" /> : <XCircle size={15} color="#B4462E" />}</td>
+                </tr>
+              );
+            }))}
+          </tbody>
+        </table>
       </div>
-      <div className="folds">
-        <Fold id="btw-kwartaal" titel={t.btwKwartaalTabel} openDefault>
-          {kwart.length === 0 ? <div className="empty">{t.leegBtw}</div> : <FacturenTabel rows={kwart} />}
-        </Fold>
+      <div className="card tabelcard">
+        <div className="tabel-top"><span className="tabel-titel">{t.abosTitel}</span></div>
+        {abos.length === 0 ? <div className="empty">{t.leegAbo}</div> : (
+          <table className="tx compact">
+            <thead><tr><th>{t.kNaam}</th><th className="r">{t.kPerMaand}</th></tr></thead>
+            <tbody>
+              {abos.map((a) => (
+                <tr key={a.naam}><td className="ell">{a.naam}</td><td className="mono r">{eur(a.perMaand)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </>
   );
 }
 
-function Agenda() {
+function ProjectenTab() {
+  const actief = PROJECTEN.filter((p) => p.actief);
+  const perMaand = actief.reduce((a, p) => a + p.bedrag, 0);
   return (
     <>
       <div className="bento">
-        <Hero soort="agenda" eyebrow={t.tabs.agenda} big="0" />
-        <Metric id="ag-betaal" icon={<Clock size={20} />} label={t.betaalmomenten} value={0} />
-        <Metric id="ag-deadline" icon={<Calendar size={20} />} label={t.deadlines} value={0} />
-        <Metric id="ag-loon" icon={<Banknote size={20} />} label={t.lonen} value={0} />
+        <Metric id="pr-actief" icon={<Briefcase size={20} />} label={t.projActief} value={actief.length} />
+        <Metric id="pr-maand" icon={<TrendingUp size={20} />} label={t.projMaand} value={eur(perMaand)} tint={{ bg: 'rgba(46,125,91,0.12)', fg: '#2E7D5B' }} />
       </div>
-      <div className="folds">
-        <Fold id="ag-tabel" titel={t.agendaTabel}><div className="empty">{t.leegAgenda}</div></Fold>
+      <div className="card tabelcard">
+        <table className="tx compact">
+          <thead><tr><th>{t.kProject}</th><th className="r">{t.kPerMaand}</th><th className="c">{t.kStatus}</th><th>{t.kEinde}</th></tr></thead>
+          <tbody>
+            {PROJECTEN.map((p) => (
+              <tr key={p.naam}>
+                <td>{p.naam}</td>
+                <td className="mono r">{eur(p.bedrag)}</td>
+                <td className="c"><span className={`chip ${p.actief ? 'groen' : 'grijs'}`}>{p.actief ? t.actief : t.beeindigd}</span></td>
+                <td className="mono nw">{p.einde || ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </>
   );
 }
 
 const NAV = [
-  { id: 'overzicht', icon: LayoutDashboard, sub: [
-    { label: T.nl.saldo, anchor: 'ov-recent' }, { label: T.nl.inkomend, anchor: 'ov-in' },
-    { label: T.nl.btwKwartaal, anchor: 'ov-btw' }, { label: T.nl.cashflow, anchor: 'ov-cashflow' } ] },
-  { id: 'facturen', icon: FileText, sub: [
-    { label: T.nl.openstaand, anchor: 'fa-open' }, { label: T.nl.verkoop, anchor: 'fa-verkoop' },
-    { label: T.nl.inkoop, anchor: 'fa-inkoop' }, { label: T.nl.factuurTabel, anchor: 'fa-tabel' } ] },
-  { id: 'transacties', icon: ArrowLeftRight, sub: [
-    { label: T.nl.dezeMaand, anchor: 'tx-maand' }, { label: T.nl.gekoppeld, anchor: 'tx-gekoppeld' },
-    { label: T.nl.txTabel, anchor: 'tx-tabel' } ] },
-  { id: 'btw', icon: Percent, sub: [
-    { label: T.nl.teBetalen, anchor: 'btw-tebetalen' }, { label: T.nl.tarief21, anchor: 'btw-tarief' },
-    { label: T.nl.btwKwartaalTabel, anchor: 'btw-kwartaal' } ] },
-  { id: 'agenda', icon: Calendar, sub: [
-    { label: T.nl.betaalmomenten, anchor: 'ag-betaal' }, { label: T.nl.deadlines, anchor: 'ag-deadline' },
-    { label: T.nl.lonen, anchor: 'ag-loon' } ] },
+  { id: 'overzicht', icon: LayoutDashboard, sub: [{ label: T.nl.balans, anchor: 'ov-balans' }, { label: 'BTW', anchor: 'ov-btw' }, { label: T.nl.inkomsten, anchor: 'ov-donuts' }] },
+  { id: 'facturen', icon: FileText, sub: [{ label: T.nl.ongekoppeld, anchor: 'fa-tabel' }, { label: T.nl.upload, anchor: 'fa-tabel' }] },
+  { id: 'transacties', icon: ArrowLeftRight, sub: [] },
+  { id: 'btw', icon: Percent, sub: [{ label: T.nl.aangiftesOpen, anchor: 'btw-open' }] },
+  { id: 'lonen', icon: Banknote, sub: [] },
+  { id: 'projecten', icon: Briefcase, sub: [{ label: T.nl.projActief, anchor: 'pr-actief' }] },
 ];
-
-function StatusDot() {
-  const [status, setStatus] = useState('bezig');
-  useEffect(() => {
-    fetch('/api/health').then((r) => r.json()).then((d) => setStatus(d.ok ? 'ok' : 'fout')).catch(() => setStatus('fout'));
-  }, []);
-  const kleur = status === 'ok' ? '#2E7D5B' : status === 'fout' ? '#B4462E' : '#9aa39d';
-  const label = status === 'ok' ? t.verbindingOk : status === 'fout' ? t.verbindingFout : t.verbindingBezig;
-  return <span className="status"><span className="dot" style={{ background: kleur }} />{label}</span>;
-}
 
 function App() {
   const [tab, setTab] = useState('overzicht');
   const [entiteit, setEntiteit] = useState('geconsolideerd');
   const [nonce, setNonce] = useState(0);
   const [syncBezig, setSyncBezig] = useState(false);
-  const [syncMsg, setSyncMsg] = useState(null);
-  const [anchor, setAnchor] = useState(null);
-  const rows = useTransacties(entiteit, nonce);
+  const [focusTx, setFocusTx] = useState(null);
+  const txs = useTransacties(entiteit, nonce);
+  const facs = useFacturen(entiteit, nonce);
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
 
-  const ga = useCallback((tabId, anchorId) => { setTab(tabId); setAnchor(anchorId || null); }, []);
-
-  useEffect(() => {
-    if (!anchor) return;
-    const el = document.getElementById(anchor);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setAnchor(null);
-  }, [tab, anchor, rows]);
-
-  const sync = async () => {
-    setSyncBezig(true); setSyncMsg(null);
-    const q = entiteit === 'geconsolideerd' ? '' : `?type=${entiteit}`;
-    try {
-      const r = await fetch(`/api/bunq-sync${q}`, { method: 'POST' });
-      const raw = await r.text();
-      let j = null;
-      try { j = JSON.parse(raw); } catch { /* geen json */ }
-      if (j && j.ok) {
-        const nieuw = (j.resultaten || []).reduce((a, x) => a + (x.verwerkt || 0), 0);
-        const rek = (j.resultaten || []).reduce((a, x) => a + (x.rekeningen || 0), 0);
-        setSyncMsg({ ok: true, text: `Bank: ${nieuw} nieuw, ${rek} rekeningen` });
-      } else {
-        const reden = (j?.resultaten || []).filter((x) => !x.ok).map((x) => `${x.entiteit}: ${x.reden}`).join('  |  ')
-          || j?.reden || (raw ? raw.slice(0, 300) : `status ${r.status}`);
-        setSyncMsg({ ok: false, text: reden });
-      }
-    } catch (e) {
-      setSyncMsg({ ok: false, text: String(e.message || e) });
-    }
-    await Promise.allSettled([fetch('/api/ingest', { method: 'POST' })]);
-    await fetch('/api/parse', { method: 'POST' }).catch(() => {});
-    await fetch('/api/match', { method: 'POST' }).catch(() => {});
+  const sync = useCallback(async () => {
+    setSyncBezig(true);
+    await postJson('/api/bunq-sync');
+    await postJson('/api/ingest');
+    await postJson('/api/parse');
+    await postJson('/api/match');
     setSyncBezig(false); setNonce((n) => n + 1);
-  };
+  }, []);
 
   const startRef = useRef(false);
   useEffect(() => {
     if (startRef.current) return;
     startRef.current = true;
     sync();
-  }, []);
+  }, [sync]);
+
+  const gaNaarTx = (id) => { setFocusTx(id); setTab('transacties'); };
 
   const entKeuze = [
     { id: 'geconsolideerd', naam: t.geconsolideerd },
@@ -610,13 +567,15 @@ function App() {
           const Icon = item.icon;
           return (
             <button key={item.id} className={`rail-item${tab === item.id ? ' active' : ''}`} onClick={() => setTab(item.id)} aria-label={t.tabs[item.id]}>
-              <Icon size={21} />
-              <div className="flyout">
-                <h4>{t.tabs[item.id]}</h4>
-                {item.sub.map((s) => (
-                  <button key={s.anchor} onClick={(e) => { e.stopPropagation(); ga(item.id, s.anchor); }}>{s.label}</button>
-                ))}
-              </div>
+              <Icon size={20} />
+              {item.sub.length > 0 && (
+                <div className="flyout">
+                  <h4>{t.tabs[item.id]}</h4>
+                  {item.sub.map((s, i) => (
+                    <button key={i} onClick={(e) => { e.stopPropagation(); setTab(item.id); setTimeout(() => document.getElementById(s.anchor)?.scrollIntoView({ behavior: 'smooth' }), 60); }}>{s.label}</button>
+                  ))}
+                </div>
+              )}
             </button>
           );
         })}
@@ -624,27 +583,26 @@ function App() {
 
       <main className="main">
         <div className="topbar">
+          <div className="pagetitle">{t.tabs[tab]}</div>
           <div className="seg">
             {entKeuze.map((e) => (
               <button key={e.id} className={entiteit === e.id ? 'on' : ''} onClick={() => setEntiteit(e.id)}>{e.naam}</button>
             ))}
           </div>
-          <div className="pagetitle">{t.tabs[tab]}</div>
-          <div className="syncwrap">
+          <div className="topacties">
             <button className="sync" onClick={sync} disabled={syncBezig}>
-              <RefreshCw size={15} className={syncBezig ? 'spin' : ''} />
-              {t.tabs.transacties}
+              <RefreshCw size={14} className={syncBezig ? 'spin' : ''} />
             </button>
-            <StatusDot />
+            <StatusHub onRefresh={reload} />
           </div>
         </div>
-        {syncMsg && <div className={`syncmsg${syncMsg.ok ? '' : ' err'}`}>{syncMsg.text}</div>}
 
-        {tab === 'overzicht' && <Overzicht rows={rows} />}
-        {tab === 'facturen' && <Facturen entiteit={entiteit} nonce={nonce} />}
-        {tab === 'transacties' && <Transacties rows={rows} reload={() => setNonce((n) => n + 1)} />}
-        {tab === 'btw' && <Btw entiteit={entiteit} nonce={nonce} />}
-        {tab === 'agenda' && <Agenda />}
+        {tab === 'overzicht' && <Overzicht txs={txs} facs={facs} />}
+        {tab === 'facturen' && <FacturenTab entiteit={entiteit} nonce={nonce} reload={reload} gaNaarTx={gaNaarTx} />}
+        {tab === 'transacties' && <TransactiesTab txs={txs} focusId={focusTx} />}
+        {tab === 'btw' && <BtwTab txs={txs} facs={facs} />}
+        {tab === 'lonen' && <LonenTab txs={txs} reload={reload} />}
+        {tab === 'projecten' && <ProjectenTab />}
       </main>
     </div>
   );
