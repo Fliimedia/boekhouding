@@ -9,7 +9,7 @@
 //          POST /api/bunq-sync?type=holding
 
 import { createClient } from '@supabase/supabase-js';
-import { ensureContext, listMonetaryAccounts, listPayments, bunqBase } from '../lib/bunq.js';
+import { ensureContext, listMonetaryAccounts, listPayments, getUserId, bunqBase } from '../lib/bunq.js';
 
 export const maxDuration = 60;
 
@@ -117,7 +117,8 @@ export default async function handler(req, res) {
         };
 
         const context = await ensureContext({ apiKey: login.key, ctx: ctxRow || {}, save });
-        const accounts = await listMonetaryAccounts(context);
+        const userId = await getUserId(context);
+        const accounts = await listMonetaryAccounts(context, userId);
         const maand = req.query?.maand === '1';
         const d30 = new Date(Date.now() - 32 * 86400000).toISOString().slice(0, 10);
         const sinds = maand ? d30 : `${new Date().getFullYear()}-01-01`;
@@ -131,7 +132,7 @@ export default async function handler(req, res) {
             : ibanMap[normIban(acc.iban)];
           if (!entityId) continue;
           gebruikt += 1;
-          const betalingen = await listPayments(context, acc.id, { sinds });
+          const betalingen = await listPayments(context, userId, acc.id, { sinds });
           if (betalingen.length === 0) continue;
           const rijen = betalingen.map((b) => ({ ...b, entity_id: entityId, rekening_iban: acc.iban, bron: 'bunq' }));
           const { error: upErr, count } = await supabase
@@ -144,7 +145,7 @@ export default async function handler(req, res) {
           entiteit: login.naam, ok: true, rekeningen: gebruikt, verwerkt: nieuw,
           gevonden: accounts.map((a) => ({ iban: a.iban, status: a.status })),
           ingesteld: Object.keys(ibanMap),
-          base: bunqBase(), user_id: context.session_user_id, user_type: context.session_user_type,
+          base: bunqBase(), user_id: userId, user_type: context.session_user_type,
         });
       } catch (err) {
         resultaten.push({ entiteit: login.naam, ok: false, reden: netteFout(err.message || err) });
