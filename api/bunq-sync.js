@@ -135,11 +135,6 @@ export default async function handler(req, res) {
           if (upErr) throw new Error(upErr.message);
           nieuw += count ?? rijen.length;
         }
-        // Opruimen: oude rijen zonder rekening-IBAN (van voor de afscherming).
-        // Die worden hierboven correct opnieuw ingelezen als ze bij een bekende rekening horen.
-        if (Object.keys(ibanMap).length) {
-          await supabase.from('transacties').delete().eq('bron', 'bunq').is('rekening_iban', null);
-        }
         resultaten.push({ entiteit: login.naam, ok: true, rekeningen: gebruikt, verwerkt: nieuw });
       } catch (err) {
         resultaten.push({ entiteit: login.naam, ok: false, reden: netteFout(err.message || err) });
