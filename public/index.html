@@ -98,6 +98,12 @@
       .st-detail { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
       .ghost2 { background: none; border: 1px solid var(--line); color: var(--muted); }
       .ghost2:hover { border-color: var(--accent); color: var(--accent); }
+      .scanbtn {
+        margin-top: 12px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+        border: 1px solid var(--nav); background: var(--nav); color: #fff;
+        padding: 9px 12px; border-radius: 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+      }
+      .scanbtn:disabled { opacity: .6; cursor: wait; }
 
       .bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
       .card {
