@@ -123,6 +123,7 @@ export default async function handler(req, res) {
         const d30 = new Date(Date.now() - 32 * 86400000).toISOString().slice(0, 10);
         const sinds = maand ? d30 : `${new Date().getFullYear()}-01-01`;
         let nieuw = 0, gebruikt = 0;
+        const gebruiktIbans = [];
         for (const acc of accounts) {
           if (acc.status !== 'ACTIVE') continue;
           // Harde afscherming: alleen rekeningen die expliciet aan een entiteit
@@ -132,6 +133,7 @@ export default async function handler(req, res) {
             : ibanMap[normIban(acc.iban)];
           if (!entityId) continue;
           gebruikt += 1;
+          gebruiktIbans.push(acc.iban);
           const betalingen = await listPayments(context, userId, acc.id, { sinds });
           if (betalingen.length === 0) continue;
           const rijen = betalingen.map((b) => ({ ...b, entity_id: entityId, rekening_iban: acc.iban, bron: 'bunq' }));
@@ -142,7 +144,8 @@ export default async function handler(req, res) {
           nieuw += count ?? rijen.length;
         }
         resultaten.push({
-          entiteit: login.naam, ok: true, rekeningen: gebruikt, verwerkt: nieuw,
+          entiteit: login.naam, ok: true, rekeningen: gebruikt, verwerkt: nieuw, gebruiktIbans,
+          maand: req.query?.maand === '1',
           gevonden: accounts.map((a) => ({ iban: a.iban, status: a.status })),
           ingesteld: Object.keys(ibanMap),
           base: bunqBase(), user_id: userId, user_type: context.session_user_type,
