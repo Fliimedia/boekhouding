@@ -583,14 +583,23 @@ function App() {
   const [entiteit, setEntiteit] = useState('geconsolideerd');
   const [nonce, setNonce] = useState(0);
   const [syncBezig, setSyncBezig] = useState(false);
+  const [syncMsg, setSyncMsg] = useState(null);
   const [focusTx, setFocusTx] = useState(null);
   const txs = useTransacties(entiteit, nonce);
   const facs = useFacturen(entiteit, nonce);
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
   const sync = useCallback(async () => {
-    setSyncBezig(true);
-    await postJson('/api/bunq-sync?maand=1');
+    setSyncBezig(true); setSyncMsg(null);
+    const r = await postJson('/api/bunq-sync?maand=1');
+    if (r && !r.ok) {
+      const reden = (r.resultaten || []).filter((x) => !x.ok).map((x) => `${x.entiteit}: ${x.reden}`).join(' | ') || r.reden;
+      setSyncMsg({ ok: false, text: reden || 'Bank sync fout' });
+    } else if (r && r.ok) {
+      const rek = (r.resultaten || []).reduce((a, x) => a + (x.rekeningen || 0), 0);
+      const nw = (r.resultaten || []).reduce((a, x) => a + (x.verwerkt || 0), 0);
+      setSyncMsg({ ok: true, text: `Bank: ${nw} verwerkt, ${rek} rekeningen` });
+    }
     await postJson('/api/ingest?mode=maand');
     await postJson('/api/parse');
     await postJson('/api/match');
@@ -649,6 +658,7 @@ function App() {
             <StatusHub onRefresh={reload} />
           </div>
         </div>
+        {syncMsg && <div className={`syncmsg${syncMsg.ok ? '' : ' err'}`}>{syncMsg.text}</div>}
 
         {tab === 'overzicht' && <Overzicht txs={txs} facs={facs} />}
         {tab === 'facturen' && <FacturenTab entiteit={entiteit} nonce={nonce} reload={reload} gaNaarTx={gaNaarTx} />}
