@@ -166,6 +166,7 @@ function StatusHub({ onRefresh }) {
   const [bezig, setBezig] = useState(null);
   const [scanBezig, setScanBezig] = useState(false);
   const [scanN, setScanN] = useState(0);
+  const [scanMsg, setScanMsg] = useState(null);
   const laad = useCallback(async () => setSt(await getJson('/api/status')), []);
   useEffect(() => { laad(); }, [laad]);
 
@@ -183,20 +184,21 @@ function StatusHub({ onRefresh }) {
   };
 
   const volledigeScan = async () => {
-    setScanBezig(true); setScanN(0);
-    // Bank volledig (heel het jaar) plus de hele mailbox.
+    setScanBezig(true); setScanN(0); setScanMsg(null);
     await postJson('/api/bunq-sync');
-    let meer = true, veilig = 0, totaal = 0;
+    let meer = true, veilig = 0, totaal = 0, laatste = null;
     while (meer && veilig < 120) {
       const r = await postJson('/api/ingest?mode=sweep');
+      laatste = r;
       if (!r || !r.ok) break;
       totaal += r.nieuw || 0; setScanN(totaal);
       meer = !!r.meer; veilig += 1;
     }
-    // Parsen tot alles bekeken is (gaat door ook als een enkel bestand faalt).
     let p = 0;
     while (p < 120) { const r = await postJson('/api/parse'); if (!r || (r.bekeken || 0) === 0) break; p += 1; }
     await postJson('/api/match');
+    if (laatste && !laatste.ok) setScanMsg({ ok: false, text: (laatste.fouten || []).join(' | ') || laatste.reden || 'fout' });
+    else setScanMsg({ ok: true, text: `${totaal} nieuw` });
     setScanBezig(false); laad(); onRefresh();
   };
 
@@ -229,6 +231,7 @@ function StatusHub({ onRefresh }) {
           <button className="scanbtn" onClick={volledigeScan} disabled={scanBezig}>
             <Mail size={13} className={scanBezig ? 'spin' : ''} /> {scanBezig ? `${t.bezig} ${scanN}` : t.volledigeScan}
           </button>
+          {scanMsg && <div className={`syncmsg${scanMsg.ok ? '' : ' err'}`} style={{ margin: '8px 0 0' }}>{scanMsg.text}</div>}
         </div>
       )}
     </div>
@@ -598,7 +601,13 @@ function App() {
     } else if (r && r.ok) {
       const rek = (r.resultaten || []).reduce((a, x) => a + (x.rekeningen || 0), 0);
       const nw = (r.resultaten || []).reduce((a, x) => a + (x.verwerkt || 0), 0);
-      setSyncMsg({ ok: true, text: `Bank: ${nw} verwerkt, ${rek} rekeningen` });
+      if (nw === 0 && rek === 0) {
+        const res0 = (r.resultaten || [])[0] || {};
+        const gev = (res0.gevonden || []).map((a) => `${a.iban || '?'}${a.status !== 'ACTIVE' ? ` (${a.status})` : ''}`).join(', ');
+        setSyncMsg({ ok: false, text: `Geen rekening verwerkt. Bunq geeft: ${gev || 'niets'}. Ingesteld: ${(res0.ingesteld || []).join(', ') || 'niets'}.` });
+      } else {
+        setSyncMsg({ ok: true, text: `Bank: ${nw} verwerkt, ${rek} rekeningen` });
+      }
     }
     await postJson('/api/ingest?mode=maand');
     await postJson('/api/parse');
