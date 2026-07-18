@@ -30,6 +30,7 @@ export default async function handler(req, res) {
   let items = [];
   const fouten = [];
   const sweep = req.query?.mode === 'sweep';
+  const maand = req.query?.mode === 'maand';
   let pageToken = null;
   let sweepNext = null;
   if (sweep) {
@@ -44,19 +45,19 @@ export default async function handler(req, res) {
         const { items: g, nextPageToken } = await gmailSweepPagina({ query: q, pageToken, maxMails: 30 });
         for (const x of g) items.push(x);
         sweepNext = nextPageToken;
+      } else if (maand) {
+        const d = new Date(Date.now() - 32 * 86400000);
+        const q = `has:attachment filename:pdf after:${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+        const { items: g } = await gmailSweepPagina({ query: q, pageToken: null, maxMails: 60 });
+        for (const x of g) items.push(x);
       } else if (process.env.GMAIL_LABEL) {
         items = items.concat(await gmailFacturen({ label: process.env.GMAIL_LABEL }));
       }
     }
   } catch (e) { fouten.push(`gmail: ${e.message}`); }
   try {
-    // Drive bij gewone sync altijd, bij sweep alleen op de eerste pagina.
+    // Drive bij gewone en maand-sync, bij sweep alleen op de eerste pagina.
     if (process.env.DRIVE_FOLDER_ID && process.env.GOOGLE_REFRESH_TOKEN && (!sweep || !pageToken)) {
-      items = items.concat(await driveFacturen({ folderId: process.env.DRIVE_FOLDER_ID }));
-    }
-  } catch (e) { fouten.push(`drive: ${e.message}`); }
-  try {
-    if (process.env.DRIVE_FOLDER_ID && process.env.GOOGLE_REFRESH_TOKEN) {
       items = items.concat(await driveFacturen({ folderId: process.env.DRIVE_FOLDER_ID }));
     }
   } catch (e) { fouten.push(`drive: ${e.message}`); }
