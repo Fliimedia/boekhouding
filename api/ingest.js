@@ -72,6 +72,12 @@ export default async function handler(req, res) {
     const { data: bestaat } = await supabase
       .from('facturen').select('id').eq('bron', it.bron).eq('bron_id', it.bron_id).maybeSingle();
     if (bestaat) { overgeslagen += 1; continue; }
+    // Dedupe op bestandsnaam, ongeacht bron.
+    if (it.bestandsnaam) {
+      const { data: zelfdeNaam } = await supabase
+        .from('facturen').select('id').eq('bestandsnaam', it.bestandsnaam).limit(1);
+      if (zelfdeNaam && zelfdeNaam.length) { overgeslagen += 1; continue; }
+    }
 
     // Bronbestand bewaren.
     const pad = `${doel.id}/${it.bron_id.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
