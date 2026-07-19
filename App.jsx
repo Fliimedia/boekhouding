@@ -352,12 +352,13 @@ function FacturenTab({ entiteit, nonce, reload, gaNaarTx }) {
         {lijst.length === 0 ? <div className="empty">{t.leegFac}</div> : (
           <table className="tx compact">
             <thead>
-              <tr><th>{t.kBestand}</th><th>{t.kDatum}</th><th>{t.kNaam}</th><th className="r">{t.kBedrag}</th><th className="c">{t.kKoppel}</th><th className="c">{t.kDownload}</th><th className="c"></th></tr>
+              <tr><th>{t.kBestand}</th><th>{t.kBron}</th><th>{t.kDatum}</th><th>{t.kNaam}</th><th className="r">{t.kBedrag}</th><th className="c">{t.kKoppel}</th><th className="c">{t.kDownload}</th><th className="c"></th></tr>
             </thead>
             <tbody>
               {lijst.map((f) => (
                 <tr key={f.id}>
                   <td className="ell">{f.bestandsnaam || '·'}</td>
+                  <td className="mono nw" style={{ textTransform: 'capitalize', color: 'var(--muted)' }}>{f.bron || ''}</td>
                   <td className="mono nw">{f.factuurdatum || f.bron_datum || ''}</td>
                   <td className="ell">{f.tegenpartij || ''}</td>
                   <td className="mono r nw">{f.totaal != null ? eur(f.totaal) : '·'}</td>
