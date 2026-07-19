@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     .limit(15);
   if (error) return res.status(500).json({ ok: false, reden: error.message });
 
-  let verwerkt = 0, viaAi = 0, review = 0;
+  let verwerkt = 0, viaAi = 0, review = 0, geenFactuur = 0;
   const fouten = [];
   for (const f of facturen) {
     try {
@@ -35,15 +35,24 @@ export default async function handler(req, res) {
       const buffer = Buffer.from(await blob.arrayBuffer());
       const text = await pdfTekst(buffer);
 
-      let velden = null, bron = 'regex', conf = 0;
+      let velden = null, bron = 'regex', conf = 0, financieel = false;
       if (text && text.trim().length > 20) {
         const r = parseFacturen(text);
+        financieel = r.financieel;
         if (r.velden.totaal != null) { velden = r.velden; conf = r.confidence; }
       }
       if (!velden) {
         const ai = await claudeVelden(text);
-        if (ai && ai.totaal != null) { velden = ai; bron = 'ai'; conf = 0.7; viaAi += 1; }
+        if (ai && ai.totaal != null) { velden = ai; bron = 'ai'; conf = 0.7; viaAi += 1; financieel = true; }
       }
+
+      // Geen factuur: geen bedrag en geen factuur-kenmerken. Naar de prullenbak.
+      if (!velden && !financieel) {
+        await supabase.from('facturen').update({ parse_bron: 'geen_factuur', parse_confidence: 0, verwijderd: true }).eq('id', f.id);
+        geenFactuur += 1;
+        continue;
+      }
+      // Wel een factuur maar niet uitleesbaar: ter controle laten staan.
       if (!velden) {
         await supabase.from('facturen').update({ parse_bron: 'review', parse_confidence: 0 }).eq('id', f.id);
         review += 1;
@@ -64,5 +73,5 @@ export default async function handler(req, res) {
     } catch (e) { fouten.push(`factuur ${f.id}: ${e.message}`); }
   }
 
-  return res.status(200).json({ ok: fouten.length === 0, bekeken: facturen.length, verwerkt, viaAi, review, fouten });
+  return res.status(200).json({ ok: fouten.length === 0, bekeken: facturen.length, verwerkt, viaAi, review, geenFactuur, fouten });
 }
