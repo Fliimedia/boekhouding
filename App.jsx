@@ -108,7 +108,7 @@ function Fold({ id, titel, children, openDefault, extra }) {
 }
 
 // Donut van top 4 bronnen plus overig.
-const DONUT_KLEUREN = ['#B4823C', '#2E7D5B', '#3A6B8A', '#7A5C8E', '#9aa39d'];
+const DONUT_KLEUREN = ['#007bc7', '#39870c', '#01689b', '#ffb612', '#98a2ab'];
 function Donut({ titel, data }) {
   const totaal = data.reduce((a, d) => a + d.value, 0);
   if (!totaal) return null;
@@ -128,7 +128,7 @@ function Donut({ titel, data }) {
       <div className="donut-title">{titel}</div>
       <svg viewBox="0 0 120 120" width="120" height="120">
         {segs.map((s, i) => <path key={i} d={s.d} fill="none" stroke={s.kleur} strokeWidth="14" strokeLinecap="butt" />)}
-        <text x="60" y="64" textAnchor="middle" fontSize="12" fill="#16241F" fontFamily="IBM Plex Mono">{eur(totaal)}</text>
+        <text x="60" y="64" textAnchor="middle" fontSize="12" fill="#1c1c1c" fontFamily="IBM Plex Mono">{eur(totaal)}</text>
       </svg>
       <div className="legend">
         {segs.map((s, i) => (
@@ -172,7 +172,7 @@ function StatusHub({ onRefresh }) {
 
   const kanalen = st ? [st.bank?.ok, st.gmail?.ok, st.drive?.ok] : [];
   const aantalOk = kanalen.filter(Boolean).length;
-  const kleur = !st ? '#9aa39d' : aantalOk === 3 ? '#2E7D5B' : aantalOk >= 1 ? '#C98A2E' : '#B4462E';
+  const kleur = !st ? '#98a2ab' : aantalOk === 3 ? '#39870c' : aantalOk >= 1 ? '#ffb612' : '#d52b1e';
 
   const ververs = async (kanaal) => {
     setBezig(kanaal);
@@ -204,7 +204,7 @@ function StatusHub({ onRefresh }) {
 
   const Rij = ({ naam, ok, detail, kanaal }) => (
     <div className="st-row">
-      {ok ? <CheckCircle2 size={15} color="#2E7D5B" /> : <XCircle size={15} color="#B4462E" />}
+      {ok ? <CheckCircle2 size={15} color="#39870c" /> : <XCircle size={15} color="#d52b1e" />}
       <div className="st-info">
         <div className="st-naam">{naam}</div>
         <div className="st-detail">{detail || (ok ? t.verbonden : t.nietVerbonden)}</div>
@@ -521,7 +521,7 @@ function LonenTab({ txs, reload }) {
                   <td>{l.naam}</td>
                   <td className="mono r">{eur(l.salaris)}</td>
                   <td className="mono r">{l.loonbelasting ? eur(l.loonbelasting) : '·'}</td>
-                  <td className="c">{betaald ? <CheckCircle2 size={15} color="#2E7D5B" /> : <XCircle size={15} color="#B4462E" />}</td>
+                  <td className="c">{betaald ? <CheckCircle2 size={15} color="#39870c" /> : <XCircle size={15} color="#d52b1e" />}</td>
                 </tr>
               );
             }))}
@@ -552,7 +552,7 @@ function ProjectenTab() {
     <>
       <div className="bento">
         <Metric id="pr-actief" icon={<Briefcase size={20} />} label={t.projActief} value={actief.length} />
-        <Metric id="pr-maand" icon={<TrendingUp size={20} />} label={t.projMaand} value={eur(perMaand)} tint={{ bg: 'rgba(46,125,91,0.12)', fg: '#2E7D5B' }} />
+        <Metric id="pr-maand" icon={<TrendingUp size={20} />} label={t.projMaand} value={eur(perMaand)} tint={{ bg: 'rgba(57,135,12,0.12)', fg: '#39870c' }} />
       </div>
       <div className="card tabelcard">
         <table className="tx compact">
