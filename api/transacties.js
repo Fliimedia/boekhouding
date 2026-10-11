@@ -1,5 +1,8 @@
 // Lees-endpoint voor transacties. GET /api/transacties of /api/transacties?type=holding
+// Optioneel: van=YYYY-MM-DD, tot=YYYY-MM-DD, limit (max 1000), offset.
 import { createClient } from '@supabase/supabase-js';
+
+const isDatum = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
 
 export default async function handler(req, res) {
   const url = process.env.SUPABASE_URL;
@@ -15,12 +18,18 @@ export default async function handler(req, res) {
     entityIds = (ents || []).map((e) => e.id);
   }
 
+  const limit = Math.min(Math.max(parseInt(req.query?.limit, 10) || 200, 1), 1000);
+  const offset = Math.max(parseInt(req.query?.offset, 10) || 0, 0);
+
   let q = supabase
     .from('transacties')
-    .select('id, entity_id, datum, bedrag, tegenpartij, omschrijving')
+    .select('id, entity_id, datum, bedrag, tegenpartij, omschrijving, iban_tegenpartij, rekening_iban')
     .order('datum', { ascending: false })
-    .limit(200);
+    .order('id', { ascending: false })
+    .range(offset, offset + limit - 1);
   if (entityIds) q = q.in('entity_id', entityIds);
+  if (isDatum(req.query?.van)) q = q.gte('datum', req.query.van);
+  if (isDatum(req.query?.tot)) q = q.lte('datum', req.query.tot);
 
   const { data, error } = await q;
   if (error) return res.status(500).json({ ok: false, reden: error.message });
@@ -29,8 +38,12 @@ export default async function handler(req, res) {
   const ids = data.map((r) => r.id);
   const koppMap = {};
   if (ids.length) {
-    const { data: kopp } = await supabase
-      .from('koppelingen').select('transactie_id, factuur_id, confidence, bevestigd').in('transactie_id', ids);
+    const kopp = [];
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data: deel } = await supabase
+        .from('koppelingen').select('transactie_id, factuur_id, confidence, bevestigd').in('transactie_id', ids.slice(i, i + 200));
+      kopp.push(...(deel || []));
+    }
     const facIds = [...new Set((kopp || []).map((k) => k.factuur_id))];
     const facById = {};
     if (facIds.length) {

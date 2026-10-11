@@ -7,6 +7,7 @@
 //
 // Aanroep: POST /api/bunq-sync            (beide entiteiten)
 //          POST /api/bunq-sync?type=holding
+//          GET  /api/bunq-sync?run=1&sinds=2025-01-01   (ophalen vanaf een datum)
 
 import { createClient } from '@supabase/supabase-js';
 import { ensureContext, listMonetaryAccounts, listPayments, getUserId, bunqBase } from '../lib/bunq.js';
@@ -32,8 +33,9 @@ function sleutelRol(key) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ ok: false, reden: 'Gebruik POST' });
+  const getRun = req.method === 'GET' && req.query?.run === '1';
+  if (req.method !== 'POST' && !getRun) {
+    return res.status(405).json({ ok: false, reden: 'Gebruik POST of GET met run=1' });
   }
   try {
     const url = process.env.SUPABASE_URL;
@@ -121,7 +123,8 @@ export default async function handler(req, res) {
         const accounts = await listMonetaryAccounts(context, userId);
         const maand = req.query?.maand === '1';
         const d30 = new Date(Date.now() - 32 * 86400000).toISOString().slice(0, 10);
-        const sinds = maand ? d30 : `${new Date().getFullYear()}-01-01`;
+        const sindsParam = /^\d{4}-\d{2}-\d{2}$/.test(req.query?.sinds || '') ? req.query.sinds : null;
+        const sinds = sindsParam || (maand ? d30 : `${new Date().getFullYear()}-01-01`);
         let nieuw = 0, gebruikt = 0;
         const gebruiktIbans = [];
         for (const acc of accounts) {
@@ -145,7 +148,7 @@ export default async function handler(req, res) {
         }
         resultaten.push({
           entiteit: login.naam, ok: true, rekeningen: gebruikt, verwerkt: nieuw, gebruiktIbans,
-          maand: req.query?.maand === '1',
+          maand: req.query?.maand === '1', sinds,
           gevonden: accounts.map((a) => ({ iban: a.iban, status: a.status })),
           ingesteld: Object.keys(ibanMap),
           base: bunqBase(), user_id: userId, user_type: context.session_user_type,
