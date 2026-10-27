@@ -149,7 +149,7 @@ export default async function handler(req, res) {
         resultaten.push({
           entiteit: login.naam, ok: true, rekeningen: gebruikt, verwerkt: nieuw, gebruiktIbans,
           maand: req.query?.maand === '1', sinds,
-          gevonden: accounts.map((a) => ({ iban: a.iban, status: a.status })),
+          gevonden: accounts.map((a) => ({ iban: a.iban, status: a.status, naam: a.beschrijving, saldo: a.saldo })),
           ingesteld: Object.keys(ibanMap),
           base: bunqBase(), user_id: userId, user_type: context.session_user_type,
         });
