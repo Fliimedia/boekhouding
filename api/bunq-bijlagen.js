@@ -12,7 +12,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { ensureContext, getUserId, listMonetaryAccounts, bunqGet, bunqRaw } from '../lib/bunq.js';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const wacht = (ms) => new Promise((r) => setTimeout(r, ms));
 const normIban = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
@@ -104,75 +104,107 @@ export default async function handler(req, res) {
       return res.status(200).json(uit);
     }
 
-    const cursorSleutel = `bunq_bijlagen:${ent.id}:${van}`;
+    // Werkwijze: loop door de bunq-events van de rekening (nieuw naar oud). Overboekingen
+    // hebben notities op de Payment, kaartbetalingen op de MasterCardAction.
+    const iban = type === 'holding' ? 'NL95BUNQ2060792940' : 'NL23BUNQ2060789095';
+    const maid = accByIban[iban];
+    if (!maid) return res.status(200).json({ ok: false, reden: `Rekening ${iban} niet gevonden` });
+
+    const cursorSleutel = `bunq_bijlagen_ev:${ent.id}:${van}`;
     if (req.query?.reset === '1') await supabase.from('app_state').delete().eq('sleutel', cursorSleutel);
     const { data: st } = await supabase.from('app_state').select('waarde').eq('sleutel', cursorSleutel).maybeSingle();
-    const vanafId = Number(st?.waarde || 0);
+    if (st?.waarde === 'KLAAR') return res.status(200).json({ ok: true, klaar: true, reden: 'Alle events zijn al bekeken. reset=1 om opnieuw te beginnen.' });
+    let olderId = st?.waarde ? Number(st.waarde) : null;
 
-    const { data: txs, error: txErr } = await supabase
-      .from('transacties').select('id, datum, bedrag, tegenpartij, extern_id, rekening_iban')
-      .eq('entity_id', ent.id).gte('datum', van).like('extern_id', 'bunq:%').gt('id', vanafId)
-      .order('id').limit(n);
-    if (txErr) return res.status(200).json({ ok: false, reden: txErr.message });
-
-    let bekeken = 0, gevonden = 0, opgeslagen = 0, laatsteId = vanafId;
+    const budget = Math.min(Math.max(parseInt(req.query?.sec, 10) || 270, 20), 280) * 1000;
+    let bekeken = 0, gevonden = 0, opgeslagen = 0, nietGekoppeld = 0, klaar = false, laatste = olderId;
     const fouten = [];
-    for (const tx of txs || []) {
-      if (Date.now() - start > 48000) break;
-      const pid = String(tx.extern_id).split(':')[1];
-      const maid = accByIban[normIban(tx.rekening_iban)];
-      if (!maid) { laatsteId = tx.id; bekeken += 1; continue; }
-      let ids = [];
-      try {
-        const resp = await bunqGet(context, `/v1/user/${uid}/monetary-account/${maid}/payment/${pid}/note-attachment`);
-        ids = bijlageIds(resp);
-      } catch (e) { fouten.push(`tx ${tx.id}: ${e.message}`); }
-      await wacht(1050);
 
-      for (const b of ids) {
-        gevonden += 1;
-        const bronId = `bunq:${b.noteId}:${b.attId}`;
-        const { data: bestaat } = await supabase.from('facturen').select('id').eq('bron', 'bunq').eq('bron_id', bronId).limit(1);
-        if (bestaat && bestaat.length) continue;
-        let inhoud = null;
-        for (const pad of [`/v1/user/${uid}/attachment/${b.attId}/content`, `/v1/user/${uid}/monetary-account/${maid}/attachment/${b.attId}/content`]) {
-          try { inhoud = await bunqRaw(context, pad); break; } catch (e) { inhoud = null; if (pad.includes('monetary')) fouten.push(`bijlage ${b.attId}: ${e.message}`); }
-          await wacht(1050);
-        }
-        await wacht(1050);
-        if (!inhoud) continue;
-        const ext = extensie(inhoud.contentType);
-        const opslagPad = `${ent.id}/bunq_${b.attId}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('facturen')
-          .upload(opslagPad, inhoud.bytes, { contentType: inhoud.contentType, upsert: true });
-        if (upErr) { fouten.push(`opslag ${b.attId}: ${upErr.message}`); continue; }
-        const isPdf = ext === 'pdf';
-        const { data: fac, error: insErr } = await supabase.from('facturen').insert({
-          entity_id: ent.id,
-          richting: Number(tx.bedrag) < 0 ? 'inkoop' : 'verkoop',
-          tegenpartij: tx.tegenpartij,
-          status: 'betaald',
-          totaal: isPdf ? null : Math.abs(Number(tx.bedrag)),
-          parse_bron: isPdf ? null : 'bunq-afbeelding',
-          bron: 'bunq', bron_id: bronId, bron_datum: tx.datum,
-          bestandsnaam: b.omschrijving || `bunq-bijlage-${b.attId}.${ext}`,
-          bronbestand_url: opslagPad,
-        }).select('id').maybeSingle();
-        if (insErr) { fouten.push(`factuur ${b.attId}: ${insErr.message}`); continue; }
-        // Bijlage in bunq is een zekere koppeling: voorstel vervangen en bevestigen.
-        await supabase.from('koppelingen').delete().eq('transactie_id', tx.id).eq('bevestigd', false);
-        await supabase.from('koppelingen').insert({ transactie_id: tx.id, factuur_id: fac.id, confidence: 1, bevestigd: true });
-        opgeslagen += 1;
+    async function zoekTransactie(obj, soort) {
+      if (soort === 'Payment') {
+        const { data } = await supabase.from('transacties').select('id, datum, bedrag, tegenpartij').eq('extern_id', `bunq:${obj.id}`).limit(1);
+        return data?.[0] || null;
       }
-      laatsteId = tx.id;
-      bekeken += 1;
+      const bedrag = Number(obj.amount_billing?.value ?? obj.amount_local?.value ?? 0);
+      const d = new Date((obj.created || '').slice(0, 10));
+      const van2 = new Date(d.getTime() - 2 * 86400000).toISOString().slice(0, 10);
+      const tot2 = new Date(d.getTime() + 7 * 86400000).toISOString().slice(0, 10);
+      const { data } = await supabase.from('transacties').select('id, datum, bedrag, tegenpartij, omschrijving')
+        .eq('entity_id', ent.id).eq('rekening_iban', iban).gte('datum', van2).lte('datum', tot2)
+        .in('bedrag', [-bedrag, bedrag]).limit(10);
+      const desc = String(obj.description || '').trim().toLowerCase();
+      return (data || []).find((t) => String(t.omschrijving || '').trim().toLowerCase() === desc) || (data || [])[0] || null;
     }
 
-    await supabase.from('app_state').upsert({ sleutel: cursorSleutel, waarde: String(laatsteId), updated_at: new Date().toISOString() });
-    const { count: rest } = await supabase.from('transacties').select('*', { count: 'exact', head: true })
-      .eq('entity_id', ent.id).gte('datum', van).like('extern_id', 'bunq:%').gt('id', laatsteId);
+    buiten: while (Date.now() - start < budget) {
+      const resp = await bunqGet(context, `/v1/user/${uid}/event?monetary_account_id=${maid}&count=200${olderId ? `&older_id=${olderId}` : ''}`);
+      await wacht(1050);
+      const events = (resp || []).map((x) => x.Event).filter(Boolean);
+      if (!events.length) { klaar = true; break; }
+      for (const ev of events) {
+        if (Date.now() - start > budget) break buiten;
+        if ((ev.created || '').slice(0, 10) < van) { klaar = true; break buiten; }
+        laatste = ev.id;
+        const soort = Object.keys(ev.object || {})[0];
+        const obj = ev.object?.[soort];
+        const relevant = obj && ev.is_event_latest_for_object !== false &&
+          ((soort === 'Payment' && obj.type !== 'MASTERCARD') || soort === 'MasterCardAction');
+        if (!relevant) continue;
+        bekeken += 1;
+        const pad = soort === 'Payment' ? 'payment' : 'mastercard-action';
+        let ids = [];
+        try {
+          ids = bijlageIds(await bunqGet(context, `/v1/user/${uid}/monetary-account/${maid}/${pad}/${obj.id}/note-attachment`));
+        } catch (e) { if (!/support notes/i.test(e.message)) fouten.push(`${soort} ${obj.id}: ${e.message}`); }
+        await wacht(1050);
+        if (!ids.length) continue;
 
-    return res.status(200).json({ ok: fouten.length === 0, type, bekeken, gevonden, opgeslagen, resterend: rest || 0, duur_ms: Date.now() - start, fouten: fouten.slice(0, 10) });
+        const tx = await zoekTransactie(obj, soort);
+        for (const b of ids) {
+          gevonden += 1;
+          const bronId = `bunq:${b.noteId}:${b.attId}`;
+          const { data: bestaat } = await supabase.from('facturen').select('id').eq('bron', 'bunq').eq('bron_id', bronId).limit(1);
+          if (bestaat && bestaat.length) continue;
+          let inhoud = null;
+          for (const p of [`/v1/user/${uid}/attachment/${b.attId}/content`, `/v1/user/${uid}/monetary-account/${maid}/attachment/${b.attId}/content`]) {
+            try { inhoud = await bunqRaw(context, p); break; } catch (e) { if (p.includes('monetary')) fouten.push(`bijlage ${b.attId}: ${e.message}`); }
+            await wacht(1050);
+          }
+          await wacht(1050);
+          if (!inhoud) continue;
+          const ext = extensie(inhoud.contentType);
+          const opslagPad = `${ent.id}/bunq_${b.attId}.${ext}`;
+          const { error: upErr } = await supabase.storage.from('facturen')
+            .upload(opslagPad, inhoud.bytes, { contentType: inhoud.contentType, upsert: true });
+          if (upErr) { fouten.push(`opslag ${b.attId}: ${upErr.message}`); continue; }
+          const isPdf = ext === 'pdf';
+          const bedrag = tx ? Number(tx.bedrag) : -Number(obj.amount_billing?.value ?? obj.amount?.value ?? 0);
+          const { data: fac, error: insErr } = await supabase.from('facturen').insert({
+            entity_id: ent.id,
+            richting: bedrag < 0 ? 'inkoop' : 'verkoop',
+            tegenpartij: tx?.tegenpartij || obj.counterparty_alias?.display_name || null,
+            status: tx ? 'betaald' : 'open',
+            totaal: isPdf ? null : Math.abs(bedrag),
+            parse_bron: isPdf ? null : 'bunq-afbeelding',
+            bron: 'bunq', bron_id: bronId, bron_datum: tx?.datum || (ev.created || '').slice(0, 10),
+            bestandsnaam: b.omschrijving || `bunq-bijlage-${b.attId}.${ext}`,
+            bronbestand_url: opslagPad,
+          }).select('id').maybeSingle();
+          if (insErr) { fouten.push(`factuur ${b.attId}: ${insErr.message}`); continue; }
+          if (tx) {
+            // Bijlage in bunq is een zekere koppeling: voorstel vervangen en bevestigen.
+            await supabase.from('koppelingen').delete().eq('transactie_id', tx.id).eq('bevestigd', false);
+            await supabase.from('koppelingen').insert({ transactie_id: tx.id, factuur_id: fac.id, confidence: 1, bevestigd: true });
+          } else nietGekoppeld += 1;
+          opgeslagen += 1;
+        }
+      }
+      if (events.length < 200) { klaar = true; break; }
+      olderId = events[events.length - 1].id;
+    }
+
+    await supabase.from('app_state').upsert({ sleutel: cursorSleutel, waarde: klaar ? 'KLAAR' : String(laatste), updated_at: new Date().toISOString() });
+    return res.status(200).json({ ok: fouten.length === 0, type, bekeken, gevonden, opgeslagen, nietGekoppeld, klaar, duur_ms: Date.now() - start, fouten: fouten.slice(0, 10) });
   } catch (e) {
     return res.status(200).json({ ok: false, reden: String(e.message || e).slice(0, 300) });
   }
