@@ -18,6 +18,10 @@ export default async function handler(req, res) {
   if (!url || !serviceKey) return res.status(500).json({ ok: false, reden: 'Supabase env vars ontbreken' });
   const supabase = createClient(url, serviceKey);
 
+  // Op verzoek: eerder niet-uitleesbare stukken opnieuw proberen.
+  if (req.query?.opnieuw === 'review') {
+    await supabase.from('facturen').update({ parse_bron: null }).eq('parse_bron', 'review').is('totaal', null);
+  }
   // Onverwerkte facturen met een bronbestand, nog niet eerder geprobeerd.
   const { data: facturen, error } = await supabase
     .from('facturen')
