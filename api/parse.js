@@ -7,13 +7,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { pdfTekst, parseFacturen, claudeVelden } from '../lib/parse.js';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export default async function handler(req, res) {
   const getRun = req.method === 'GET' && req.query?.run === '1';
   if (req.method !== 'POST' && !getRun) return res.status(405).json({ ok: false, reden: 'Gebruik POST of GET met run=1' });
   const start = Date.now();
-  const n = Math.min(Math.max(parseInt(req.query?.n, 10) || 15, 1), 40);
+  const n = Math.min(Math.max(parseInt(req.query?.n, 10) || 15, 1), 200);
   const url = process.env.SUPABASE_URL, serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
   if (!url || !serviceKey) return res.status(500).json({ ok: false, reden: 'Supabase env vars ontbreken' });
   const supabase = createClient(url, serviceKey);
@@ -40,7 +40,7 @@ export default async function handler(req, res) {
   const fouten = [];
   let duplicaat = 0, naarHolding = 0;
   for (const f of facturen) {
-    if (Date.now() - start > 50000) break;
+    if (Date.now() - start > 270000) break;
     try {
       const { data: blob, error: dlErr } = await supabase.storage.from('facturen').download(f.bronbestand_url);
       if (dlErr) { fouten.push(`download ${f.id}: ${dlErr.message}`); continue; }

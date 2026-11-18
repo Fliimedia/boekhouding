@@ -16,7 +16,7 @@ import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { gmailFacturen, driveFacturen, gmailSweepPagina } from '../lib/google.js';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const isDatum = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
 const gdatum = (s) => s.replace(/-/g, '/');
