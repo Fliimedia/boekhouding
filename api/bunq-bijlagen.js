@@ -66,7 +66,13 @@ export default async function handler(req, res) {
     const heeftPer = process.env.BUNQ_API_KEY_HOLDING || process.env.BUNQ_API_KEY_WERKMAATSCHAPPIJ;
     let apiKey, ctxEntity;
     if (heeftPer) { apiKey = perKey; ctxEntity = ent.id; }
-    else { apiKey = process.env.BUNQ_API_KEY; ctxEntity = ents[0].id; }
+    else {
+      // Gedeelde sleutel: hergebruik de bestaande, geregistreerde context van bunq-sync.
+      apiKey = process.env.BUNQ_API_KEY;
+      const { data: ctxs } = await supabase.from('bunq_context').select('entity_id, device_registered, updated_at')
+        .eq('device_registered', true).order('updated_at', { ascending: false }).limit(1);
+      ctxEntity = ctxs?.[0]?.entity_id ?? ents[0].id;
+    }
     if (!apiKey) return res.status(200).json({ ok: false, reden: 'Geen bunq-sleutel voor deze entiteit' });
 
     const { data: ctxRow } = await supabase.from('bunq_context').select('*').eq('entity_id', ctxEntity).maybeSingle();
