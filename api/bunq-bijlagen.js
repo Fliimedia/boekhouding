@@ -97,8 +97,11 @@ export default async function handler(req, res) {
       if (!tx) return res.status(200).json({ ok: false, reden: 'transactie niet gevonden' });
       const pid = String(tx.extern_id || '').split(':')[1];
       const maid = accByIban[normIban(tx.rekening_iban)];
-      const resp = await bunqGet(context, `/v1/user/${uid}/monetary-account/${maid}/payment/${pid}/note-attachment`);
-      return res.status(200).json({ ok: true, tx, maid, pid, resp, ids: bijlageIds(resp) });
+      const uit = { ok: true, tx, maid, pid };
+      try { uit.payment = await bunqGet(context, `/v1/user/${uid}/monetary-account/${maid}/payment/${pid}`); } catch (e) { uit.paymentFout = e.message; }
+      try { uit.notes = await bunqGet(context, `/v1/user/${uid}/monetary-account/${maid}/payment/${pid}/note-attachment`); } catch (e) { uit.notesFout = e.message; }
+      try { uit.events = await bunqGet(context, `/v1/user/${uid}/event?monetary_account_id=${maid}&count=5`); } catch (e) { uit.eventsFout = e.message; }
+      return res.status(200).json(uit);
     }
 
     const cursorSleutel = `bunq_bijlagen:${ent.id}:${van}`;
