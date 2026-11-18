@@ -2,7 +2,7 @@
 // Deterministisch eerst; Claude alleen als terugval wanneer het totaal ontbreekt.
 //
 // Env vars: SUPABASE_URL, SUPABASE_SERVICE_KEY, ANTHROPIC_API_KEY (optioneel)
-// Aanroep: POST /api/parse
+// Aanroep: POST /api/parse  of  GET /api/parse?run=1&n=20
 
 import { createClient } from '@supabase/supabase-js';
 import { pdfTekst, parseFacturen, claudeVelden } from '../lib/parse.js';
@@ -10,7 +10,10 @@ import { pdfTekst, parseFacturen, claudeVelden } from '../lib/parse.js';
 export const maxDuration = 60;
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ ok: false, reden: 'Gebruik POST' });
+  const getRun = req.method === 'GET' && req.query?.run === '1';
+  if (req.method !== 'POST' && !getRun) return res.status(405).json({ ok: false, reden: 'Gebruik POST of GET met run=1' });
+  const start = Date.now();
+  const n = Math.min(Math.max(parseInt(req.query?.n, 10) || 15, 1), 40);
   const url = process.env.SUPABASE_URL, serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
   if (!url || !serviceKey) return res.status(500).json({ ok: false, reden: 'Supabase env vars ontbreken' });
   const supabase = createClient(url, serviceKey);
@@ -18,17 +21,26 @@ export default async function handler(req, res) {
   // Onverwerkte facturen met een bronbestand, nog niet eerder geprobeerd.
   const { data: facturen, error } = await supabase
     .from('facturen')
-    .select('id, bronbestand_url')
+    .select('id, entity_id, richting, bronbestand_url')
     .is('totaal', null)
     .is('parse_bron', null)
     .not('bronbestand_url', 'is', null)
+    .like('bronbestand_url', '%.pdf')
     .eq('verwijderd', false)
-    .limit(15);
+    .order('id')
+    .limit(n);
   if (error) return res.status(500).json({ ok: false, reden: error.message });
+
+  // Holding herkennen aan de geadresseerde: holdinggegevens zonder Flii op de factuur.
+  const { data: ents } = await supabase.from('entiteiten').select('id, type');
+  const holdingId = (ents || []).find((e) => e.type === 'holding')?.id || null;
+  const isHolding = (t) => /NL\s?862\s?521\s?075\s?B01|Sten Bossong B\.?\s?V/i.test(t) && !/flii/i.test(t);
 
   let verwerkt = 0, viaAi = 0, review = 0, geenFactuur = 0;
   const fouten = [];
+  let duplicaat = 0, naarHolding = 0;
   for (const f of facturen) {
+    if (Date.now() - start > 50000) break;
     try {
       const { data: blob, error: dlErr } = await supabase.storage.from('facturen').download(f.bronbestand_url);
       if (dlErr) { fouten.push(`download ${f.id}: ${dlErr.message}`); continue; }
@@ -59,7 +71,23 @@ export default async function handler(req, res) {
         continue;
       }
 
+      // Dubbele factuur: zelfde nummer en totaal bestaat al (niet verwijderd).
+      if (velden.factuurnummer && velden.totaal != null) {
+        const { data: dub } = await supabase.from('facturen').select('id')
+          .eq('factuurnummer', velden.factuurnummer).eq('totaal', velden.totaal)
+          .eq('verwijderd', false).neq('id', f.id).limit(1);
+        if (dub && dub.length) {
+          await supabase.from('facturen').update({ parse_bron: 'duplicaat', parse_confidence: 0, verwijderd: true,
+            factuurnummer: velden.factuurnummer, totaal: velden.totaal }).eq('id', f.id);
+          duplicaat += 1;
+          continue;
+        }
+      }
+
+      const naarH = holdingId && f.richting === 'inkoop' && f.entity_id !== holdingId && isHolding(text);
+      if (naarH) naarHolding += 1;
       await supabase.from('facturen').update({
+        ...(naarH ? { entity_id: holdingId } : {}),
         factuurnummer: velden.factuurnummer ?? null,
         factuurdatum: velden.factuurdatum ?? null,
         bedrag_excl: velden.bedrag_excl ?? null,
@@ -73,5 +101,5 @@ export default async function handler(req, res) {
     } catch (e) { fouten.push(`factuur ${f.id}: ${e.message}`); }
   }
 
-  return res.status(200).json({ ok: fouten.length === 0, bekeken: facturen.length, verwerkt, viaAi, review, geenFactuur, fouten });
+  return res.status(200).json({ ok: fouten.length === 0, bekeken: facturen.length, verwerkt, viaAi, review, geenFactuur, duplicaat, naarHolding, duur_ms: Date.now() - start, fouten });
 }
