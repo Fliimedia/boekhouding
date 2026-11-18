@@ -117,7 +117,7 @@ export default async function handler(req, res) {
     let olderId = st?.waarde ? Number(st.waarde) : null;
 
     const budget = Math.min(Math.max(parseInt(req.query?.sec, 10) || 270, 20), 280) * 1000;
-    let bekeken = 0, gevonden = 0, opgeslagen = 0, nietGekoppeld = 0, klaar = false, laatste = olderId;
+    let bekeken = 0, gevonden = 0, opgeslagen = 0, nietGekoppeld = 0, klaar = false, laatste = olderId, laatsteDatum = null;
     const fouten = [];
 
     async function zoekTransactie(obj, soort) {
@@ -144,7 +144,7 @@ export default async function handler(req, res) {
       for (const ev of events) {
         if (Date.now() - start > budget) break buiten;
         if ((ev.created || '').slice(0, 10) < van) { klaar = true; break buiten; }
-        laatste = ev.id;
+        laatste = ev.id; laatsteDatum = (ev.created || '').slice(0, 10);
         const soort = Object.keys(ev.object || {})[0];
         const obj = ev.object?.[soort];
         const relevant = obj && ev.is_event_latest_for_object !== false &&
@@ -204,7 +204,7 @@ export default async function handler(req, res) {
     }
 
     await supabase.from('app_state').upsert({ sleutel: cursorSleutel, waarde: klaar ? 'KLAAR' : String(laatste), updated_at: new Date().toISOString() });
-    return res.status(200).json({ ok: fouten.length === 0, type, bekeken, gevonden, opgeslagen, nietGekoppeld, klaar, duur_ms: Date.now() - start, fouten: fouten.slice(0, 10) });
+    return res.status(200).json({ ok: fouten.length === 0, type, bekeken, gevonden, opgeslagen, nietGekoppeld, klaar, gestart_bij: olderId, tot_en_met: laatsteDatum, duur_ms: Date.now() - start, fouten: fouten.slice(0, 10) });
   } catch (e) {
     return res.status(200).json({ ok: false, reden: String(e.message || e).slice(0, 300) });
   }
