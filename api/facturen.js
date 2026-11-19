@@ -1,7 +1,9 @@
 // Lees-endpoint voor facturen. GET /api/facturen of /api/facturen?type=holding
 import { createClient } from '@supabase/supabase-js';
+import { magErin } from '../lib/auth.js';
 
 export default async function handler(req, res) {
+  if (!magErin(req, res)) return;
   const url = process.env.SUPABASE_URL;
   const serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
   if (!url || !serviceKey) return res.status(500).json({ ok: false, reden: 'Supabase env vars ontbreken' });

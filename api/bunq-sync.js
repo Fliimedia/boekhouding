@@ -11,6 +11,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { ensureContext, listMonetaryAccounts, listPayments, getUserId, bunqBase } from '../lib/bunq.js';
+import { magErin } from '../lib/auth.js';
 
 export const maxDuration = 60;
 
@@ -33,6 +34,7 @@ function sleutelRol(key) {
 }
 
 export default async function handler(req, res) {
+  if (!magErin(req, res)) return;
   const getRun = req.method === 'GET' && req.query?.run === '1';
   if (req.method !== 'POST' && !getRun) {
     return res.status(405).json({ ok: false, reden: 'Gebruik POST of GET met run=1' });

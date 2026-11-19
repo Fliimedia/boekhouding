@@ -53,10 +53,15 @@ const MAANDEN = taal === 'en'
   ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   : ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
 
-async function getJson(url) { try { const r = await fetch(url); return await r.json(); } catch { return null; } }
+function appSleutel() { try { return localStorage.getItem('bk_key') || ''; } catch { return ''; } }
+function meld401(r) { if (r.status === 401) window.dispatchEvent(new Event('bk-401')); }
+async function getJson(url) {
+  try { const r = await fetch(url, { headers: { 'x-app-key': appSleutel() } }); meld401(r); return await r.json(); } catch { return null; }
+}
 async function postJson(url, body) {
   try {
-    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-app-key': appSleutel() }, body: JSON.stringify(body || {}) });
+    meld401(r);
     return await r.json();
   } catch { return null; }
 }
@@ -684,4 +689,46 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+function Login({ onOk }) {
+  const [ww, setWw] = useState('');
+  const [fout, setFout] = useState(null);
+  const [bezig, setBezig] = useState(false);
+  const verstuur = async (e) => {
+    e.preventDefault(); setBezig(true); setFout(null);
+    try {
+      const r = await fetch('/api/health', { headers: { 'x-app-key': ww } });
+      if (r.status === 401) { setFout('Wachtwoord klopt niet.'); setBezig(false); return; }
+      try { localStorage.setItem('bk_key', ww); } catch { /* opslag geblokkeerd */ }
+      onOk();
+    } catch { setFout('Geen verbinding. Probeer het opnieuw.'); setBezig(false); }
+  };
+  return (
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', padding: 16 }}>
+      <form onSubmit={verstuur} style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 8, padding: 24, width: '100%', maxWidth: 340, display: 'grid', gap: 12 }}>
+        <label htmlFor="bk-ww" style={{ fontWeight: 600, color: 'var(--ink)' }}>Wachtwoord</label>
+        <input id="bk-ww" type="password" autoFocus value={ww} onChange={(e) => setWw(e.target.value)}
+          style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 6, font: 'inherit' }} />
+        {fout && <div style={{ color: 'var(--neg)', fontSize: 13 }}>{fout}</div>}
+        <button type="submit" disabled={bezig || !ww}
+          style={{ padding: '10px 12px', border: 'none', borderRadius: 6, background: 'var(--accent)', color: '#fff', font: 'inherit', fontWeight: 600, cursor: 'pointer' }}>Inloggen</button>
+      </form>
+    </div>
+  );
+}
+
+function Root() {
+  const [staat, setStaat] = useState('controle');
+  useEffect(() => {
+    const uit = () => { try { localStorage.removeItem('bk_key'); } catch { /* */ } setStaat('login'); };
+    window.addEventListener('bk-401', uit);
+    fetch('/api/health', { headers: { 'x-app-key': appSleutel() } })
+      .then((r) => setStaat(r.status === 401 ? 'login' : 'ok'))
+      .catch(() => setStaat('ok'));
+    return () => window.removeEventListener('bk-401', uit);
+  }, []);
+  if (staat === 'controle') return null;
+  if (staat === 'login') return <Login onOk={() => setStaat('ok')} />;
+  return <App />;
+}
+
+createRoot(document.getElementById('root')).render(<Root />);

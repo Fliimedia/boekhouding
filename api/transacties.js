@@ -1,10 +1,12 @@
 // Lees-endpoint voor transacties. GET /api/transacties of /api/transacties?type=holding
 // Optioneel: van=YYYY-MM-DD, tot=YYYY-MM-DD, limit (max 1000), offset.
 import { createClient } from '@supabase/supabase-js';
+import { magErin } from '../lib/auth.js';
 
 const isDatum = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
 
 export default async function handler(req, res) {
+  if (!magErin(req, res)) return;
   const url = process.env.SUPABASE_URL;
   const serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
   if (!url || !serviceKey) {

@@ -3,8 +3,10 @@
 // Vereiste env vars op Vercel: SUPABASE_URL, SUPABASE_SERVICE_KEY
 
 import { createClient } from '@supabase/supabase-js';
+import { magErin } from '../lib/auth.js';
 
 export default async function handler(req, res) {
+  if (!magErin(req, res)) return;
   const url = process.env.SUPABASE_URL;
   const key = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
 

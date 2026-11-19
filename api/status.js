@@ -3,6 +3,7 @@
 // GET /api/status
 
 import { createClient } from '@supabase/supabase-js';
+import { magErin } from '../lib/auth.js';
 
 async function googleAccess() {
   if (!process.env.GOOGLE_REFRESH_TOKEN || !process.env.GOOGLE_CLIENT_ID) {
@@ -35,6 +36,7 @@ async function testCall(url, token) {
 }
 
 export default async function handler(req, res) {
+  if (!magErin(req, res)) return;
   const url = process.env.SUPABASE_URL;
   const serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
   if (!url || !serviceKey) return res.status(200).json({ ok: false, reden: 'Supabase env vars ontbreken' });

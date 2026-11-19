@@ -6,10 +6,12 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { pdfTekst, parseFacturen, claudeVelden } from '../lib/parse.js';
+import { magErin } from '../lib/auth.js';
 
 export const maxDuration = 300;
 
 export default async function handler(req, res) {
+  if (!magErin(req, res)) return;
   const getRun = req.method === 'GET' && req.query?.run === '1';
   if (req.method !== 'POST' && !getRun) return res.status(405).json({ ok: false, reden: 'Gebruik POST of GET met run=1' });
   const start = Date.now();

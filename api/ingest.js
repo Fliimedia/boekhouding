@@ -14,16 +14,47 @@
 
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
-import { gmailFacturen, driveFacturen, gmailSweepPagina } from '../lib/google.js';
+import { gmailFacturen, driveFacturen, gmailSweepPagina, googleAuthUrl, googleCodeNaarToken } from '../lib/google.js';
+import { magErin } from '../lib/auth.js';
 
 export const maxDuration = 300;
+
+const db = () => createClient(process.env.SUPABASE_URL, (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY));
+const terugUrl = (req) => `https://${req.headers['x-forwarded-host'] || req.headers.host}/api/ingest`;
+
+// Terugkeer van Google na toestemming: code inwisselen en refresh token bewaren per account.
+async function googleTerug(req, res) {
+  const supabase = db();
+  const pagina = (tekst) => res.status(200).setHeader('Content-Type', 'text/html; charset=utf-8')
+    .send(`<!doctype html><meta charset="utf-8"><title>Google-koppeling</title><body style="font-family:system-ui;padding:32px"><p>${tekst}</p></body>`);
+  const { data: st } = await supabase.from('app_state').select('waarde').eq('sleutel', 'google_oauth_state').maybeSingle();
+  if (!st?.waarde || st.waarde !== String(req.query.state)) return pagina('Deze koppellink is verlopen. Start de koppeling opnieuw.');
+  await supabase.from('app_state').delete().eq('sleutel', 'google_oauth_state');
+  if (req.query.error) return pagina(`Google gaf geen toestemming: ${String(req.query.error).replace(/[<>]/g, '')}`);
+  try {
+    const { refreshToken, email } = await googleCodeNaarToken({ code: String(req.query.code), redirectUri: terugUrl(req) });
+    if (!refreshToken) return pagina('Google gaf geen blijvende toegang terug. Start de koppeling opnieuw.');
+    await supabase.from('app_state').upsert({ sleutel: `google_refresh:${email.toLowerCase()}`, waarde: refreshToken, updated_at: new Date().toISOString() });
+    return pagina(`Gekoppeld: ${email}. Je kunt dit venster sluiten.`);
+  } catch (e) {
+    return pagina(`Koppelen mislukt: ${String(e.message).replace(/[<>]/g, '')}`);
+  }
+}
 
 const isDatum = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
 const gdatum = (s) => s.replace(/-/g, '/');
 
 export default async function handler(req, res) {
+  if (req.method === 'GET' && (req.query?.code || req.query?.error) && req.query?.state) return googleTerug(req, res);
+  if (!magErin(req, res)) return;
   const getRun = req.method === 'GET' && req.query?.run === '1';
   if (req.method !== 'POST' && !getRun) return res.status(405).json({ ok: false, reden: 'Gebruik POST of GET met run=1' });
+
+  if (req.query?.mode === 'auth') {
+    const state = crypto.randomBytes(24).toString('hex');
+    await db().from('app_state').upsert({ sleutel: 'google_oauth_state', waarde: state, updated_at: new Date().toISOString() });
+    return res.status(200).json({ ok: true, url: googleAuthUrl({ redirectUri: terugUrl(req), state }), terug: terugUrl(req) });
+  }
 
   const url = process.env.SUPABASE_URL;
   const serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
@@ -36,6 +67,14 @@ export default async function handler(req, res) {
   if (!ents || ents.length === 0) return res.status(500).json({ ok: false, reden: 'Geen entiteiten. Draai schema-bunq.sql.' });
   const doel = ents.find((e) => e.type === 'werkmaatschappij') || ents[0];
 
+  // Extra account (bijv. sten@flii.nl) met een eigen refresh token.
+  const account = req.query?.account ? String(req.query.account).toLowerCase() : null;
+  let refreshToken = null;
+  if (account) {
+    const { data: rt } = await supabase.from('app_state').select('waarde').eq('sleutel', `google_refresh:${account}`).maybeSingle();
+    if (!rt?.waarde) return res.status(400).json({ ok: false, reden: `${account} is nog niet gekoppeld. Open /api/ingest?mode=auth om te koppelen.` });
+    refreshToken = rt.waarde;
+  }
   if (!process.env.GOOGLE_REFRESH_TOKEN) {
     return res.status(400).json({ ok: false, reden: 'GOOGLE_REFRESH_TOKEN ontbreekt. Autoriseer Google eenmalig.' });
   }
@@ -57,7 +96,7 @@ export default async function handler(req, res) {
       q = process.env.GMAIL_SWEEP_QUERY || `has:attachment filename:pdf after:${new Date().getFullYear()}/1/1`;
     }
   }
-  const cursorSleutel = q ? `gmail_sweep:${crypto.createHash('sha1').update(q).digest('hex').slice(0, 16)}` : null;
+  const cursorSleutel = q ? `gmail_sweep:${crypto.createHash('sha1').update(`${account || ''}|${q}`).digest('hex').slice(0, 16)}` : null;
 
   let pageToken = null;
   let sweepNext = null;
@@ -73,7 +112,7 @@ export default async function handler(req, res) {
 
   try {
     if (sweep) {
-      const r = await gmailSweepPagina({ query: q, pageToken, maxMails });
+      const r = await gmailSweepPagina({ query: q, pageToken, maxMails, refreshToken, account });
       items = r.items; sweepNext = r.nextPageToken; berichten = r.berichten; schatting = r.schatting;
     } else if (maand) {
       const d = new Date(Date.now() - 32 * 86400000);
@@ -99,9 +138,9 @@ export default async function handler(req, res) {
       if (bestaat && bestaat.length) { overgeslagen += 1; continue; }
       // Dedupe 2: zelfde mailbericht en bestandsnaam (oudere ids gebruikten een wisselende attachment-id).
       if (it.bron === 'gmail') {
-        const msgId = it.bron_id.split(':')[1];
+        const prefix = it.bron_id.slice(0, it.bron_id.lastIndexOf(':') + 1);
         const { data: zelfdeMail } = await supabase
-          .from('facturen').select('id').like('bron_id', `gmail:${msgId}:%`).eq('bestandsnaam', it.bestandsnaam).limit(1);
+          .from('facturen').select('id').like('bron_id', `${prefix}%`).eq('bestandsnaam', it.bestandsnaam).limit(1);
         if (zelfdeMail && zelfdeMail.length) { overgeslagen += 1; continue; }
       }
       // Dedupe 3: exact hetzelfde bestand (hash) al opgeslagen, bijvoorbeeld doorgestuurd of in een ander bericht.

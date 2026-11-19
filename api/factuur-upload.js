@@ -8,10 +8,12 @@
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { pdfTekst, parseFacturen, claudeVelden } from '../lib/parse.js';
+import { magErin } from '../lib/auth.js';
 
 export const maxDuration = 60;
 
 export default async function handler(req, res) {
+  if (!magErin(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ ok: false, reden: 'Gebruik POST' });
   const url = process.env.SUPABASE_URL, serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
   if (!url || !serviceKey) return res.status(500).json({ ok: false, reden: 'Supabase env vars ontbreken' });

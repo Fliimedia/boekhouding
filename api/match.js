@@ -5,6 +5,7 @@
 // Aanroep: POST /api/match  of  GET /api/match?run=1[&van=2025-01-01]
 
 import { createClient } from '@supabase/supabase-js';
+import { magErin } from '../lib/auth.js';
 
 export const maxDuration = 300;
 
@@ -37,6 +38,7 @@ async function alles(maakQuery) {
 }
 
 export default async function handler(req, res) {
+  if (!magErin(req, res)) return;
   const getRun = req.method === 'GET' && req.query?.run === '1';
   if (req.method !== 'POST' && !getRun) return res.status(405).json({ ok: false, reden: 'Gebruik POST of GET met run=1' });
   const url = process.env.SUPABASE_URL, serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || process.env.SUPABASE_KEY);
